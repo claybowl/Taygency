@@ -1,0 +1,60 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { sendSMS, extractPhoneNumber } from '@/lib/vapi';
+import { processWithAgent } from '@/lib/agent';
+import { findUserByPhone, updateUserLastActive } from '@/lib/auth';
+import { getSmsRatelimit, checkRateLimit } from '@/lib/ratelimit';
+import { MESSAGES } from '@vibe-planning/shared';
+import type { VAPIWebhookPayload } from '@vibe-planning/shared';
+
+export async function POST(req: NextRequest) {
+  try {
+    const payload: VAPIWebhookPayload = await req.json();
+
+    if (payload.message?.type !== 'conversation-update' || payload.message?.role !== 'user') {
+      return NextResponse.json({ success: true });
+    }
+
+    const phoneNumber = extractPhoneNumber(payload.message);
+    const messageContent = payload.message.content;
+
+    if (!phoneNumber || !messageContent) {
+      return NextResponse.json({ error: 'Missing data' }, { status: 400 });
+    }
+
+    const user = await findUserByPhone(phoneNumber);
+
+    if (!user) {
+      await sendSMS({
+        to: phoneNumber,
+        message: MESSAGES.unknownUser,
+      });
+      return NextResponse.json({ success: true, newUser: true });
+    }
+
+    const { success: withinLimit } = await checkRateLimit(getSmsRatelimit(), user.id);
+    if (!withinLimit) {
+      await sendSMS({
+        to: phoneNumber,
+        message: MESSAGES.rateLimitExceeded,
+      });
+      return NextResponse.json({ success: true, rateLimited: true });
+    }
+
+    await updateUserLastActive(user.id);
+
+    const agentResponse = await processWithAgent({
+      userId: user.id,
+      channel: 'sms',
+      message: messageContent,
+      context: { phoneNumber },
+    });
+
+    return NextResponse.json({
+      success: true,
+      response: agentResponse.message,
+    });
+  } catch (error) {
+    console.error('[VAPI Webhook] Error:', error);
+    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
+  }
+}
