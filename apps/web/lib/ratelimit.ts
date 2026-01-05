@@ -1,17 +1,19 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+import { RATE_LIMITS } from "@vibe-planning/shared";
 
 let redis: Redis | null = null;
 let emailRateLimiter: Ratelimit | null = null;
 let smsRateLimiter: Ratelimit | null = null;
 
-function getRedis(): Redis {
+function getRedis(): Redis | null {
   if (!redis) {
     const url = process.env.UPSTASH_REDIS_URL;
     const token = process.env.UPSTASH_REDIS_TOKEN;
 
     if (!url || !token) {
-      throw new Error('Upstash Redis credentials not configured');
+      console.warn("Upstash Redis not configured - rate limiting disabled");
+      return null;
     }
 
     redis = new Redis({ url, token });
@@ -19,32 +21,40 @@ function getRedis(): Redis {
   return redis;
 }
 
-export function getEmailRatelimit(): Ratelimit {
+export function getEmailRatelimit(): Ratelimit | null {
+  const redisClient = getRedis();
+  if (!redisClient) return null;
+
   if (!emailRateLimiter) {
     emailRateLimiter = new Ratelimit({
-      redis: getRedis(),
-      limiter: Ratelimit.slidingWindow(20, '1 d'),
-      prefix: 'ratelimit:email',
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(RATE_LIMITS.email, "1 d"),
+      prefix: "ratelimit:email",
     });
   }
   return emailRateLimiter;
 }
 
-export function getSmsRatelimit(): Ratelimit {
+export function getSmsRatelimit(): Ratelimit | null {
+  const redisClient = getRedis();
+  if (!redisClient) return null;
+
   if (!smsRateLimiter) {
     smsRateLimiter = new Ratelimit({
-      redis: getRedis(),
-      limiter: Ratelimit.slidingWindow(10, '1 d'),
-      prefix: 'ratelimit:sms',
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(RATE_LIMITS.sms, "1 d"),
+      prefix: "ratelimit:sms",
     });
   }
   return smsRateLimiter;
 }
 
 export async function checkRateLimit(
-  limiter: Ratelimit,
-  identifier: string
+  limiter: Ratelimit | null,
 ): Promise<{ success: boolean; remaining: number }> {
-  const { success, remaining } = await limiter.limit(identifier);
+  if (!limiter) {
+    return { success: true, remaining: 999 };
+  }
+  const { success, remaining } = await limiter.limit("global");
   return { success, remaining };
 }

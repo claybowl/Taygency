@@ -1,5 +1,4 @@
 export interface AgentRequest {
-  userId: string;
   channel: Channel;
   message: string;
   context: {
@@ -21,18 +20,18 @@ export interface AgentResponse {
   };
 }
 
-export type Channel = 'email' | 'sms' | 'voice' | 'app';
+export type Channel = "email" | "sms" | "voice" | "app";
 
 export type AgentAction =
-  | { type: 'task_created'; taskId: string; title: string }
-  | { type: 'task_updated'; taskId: string; changes: Record<string, unknown> }
-  | { type: 'task_completed'; taskId: string }
-  | { type: 'file_written'; path: string }
-  | { type: 'skill_executed'; skill: string; result: string };
+  | { type: "task_created"; taskId: string; title: string }
+  | { type: "task_updated"; taskId: string; changes: Record<string, unknown> }
+  | { type: "task_completed"; taskId: string }
+  | { type: "file_written"; path: string }
+  | { type: "skill_executed"; skill: string; result: string };
 
-export type TaskStatus = 'active' | 'completed' | 'someday';
-export type TaskPriority = 'high' | 'medium' | 'low';
-export type EnergyLevel = 'high' | 'medium' | 'low';
+export type TaskStatus = "active" | "completed" | "someday";
+export type TaskPriority = "high" | "medium" | "low";
+export type EnergyLevel = "high" | "medium" | "low";
 
 export interface Task {
   id: string;
@@ -70,17 +69,7 @@ export interface TaskInput {
   subtasks?: string[];
 }
 
-export interface User {
-  id: string;
-  email: string;
-  phone?: string;
-  timezone: string;
-  preferences: UserPreferences;
-  createdAt: string;
-  lastActive: string;
-}
-
-export interface UserPreferences {
+export interface OwnerPreferences {
   morningStart?: string;
   eveningEnd?: string;
   preferredChannel?: Channel;
@@ -88,12 +77,9 @@ export interface UserPreferences {
   dailySummaryTime?: string;
 }
 
-export interface UserConfig {
-  userId: string;
-  email?: string;
-  phone?: string;
+export interface WorkspaceConfig {
   timezone: string;
-  preferences: UserPreferences;
+  preferences: OwnerPreferences;
   createdAt: string;
   lastActive: string;
 }
@@ -144,7 +130,7 @@ export interface SendGridInboundPayload {
   SPF: string;
   envelope: string;
   attachments: string;
-  'attachment-info'?: string;
+  "attachment-info"?: string;
 }
 
 export interface VAPIWebhookPayload {
@@ -152,8 +138,8 @@ export interface VAPIWebhookPayload {
 }
 
 export interface VAPIMessage {
-  type: 'conversation-update' | 'end-of-call-report' | 'hang' | 'speech-update';
-  role?: 'user' | 'assistant';
+  type: "conversation-update" | "end-of-call-report" | "hang" | "speech-update";
+  role?: "user" | "assistant";
   content?: string;
   call?: VAPICall;
 }
@@ -177,6 +163,6 @@ export interface SearchResult {
 export interface FileChange {
   path: string;
   content: string;
-  operation: 'create' | 'update' | 'delete';
+  operation: "create" | "update" | "delete";
   timestamp: string;
 }

@@ -1,15 +1,26 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { DATA_ROOT, WORKSPACE_DIRS, DEFAULT_TIMEZONE } from '@vibe-planning/shared';
-import type { SearchResult, UserConfig } from '@vibe-planning/shared';
+import fs from "fs/promises";
+import path from "path";
+import {
+  DATA_ROOT,
+  WORKSPACE_DIRS,
+  DEFAULT_TIMEZONE,
+} from "@vibe-planning/shared";
+import type { SearchResult, WorkspaceConfig } from "@vibe-planning/shared";
+
+let workspaceInstance: WorkspaceManager | null = null;
 
 export class WorkspaceManager {
-  private userId: string;
   private basePath: string;
 
-  constructor(userId: string) {
-    this.userId = userId;
-    this.basePath = path.join(DATA_ROOT, userId);
+  constructor() {
+    this.basePath = DATA_ROOT;
+  }
+
+  static getInstance(): WorkspaceManager {
+    if (!workspaceInstance) {
+      workspaceInstance = new WorkspaceManager();
+    }
+    return workspaceInstance;
   }
 
   async initialize(): Promise<void> {
@@ -17,13 +28,16 @@ export class WorkspaceManager {
       await fs.mkdir(path.join(this.basePath, dir), { recursive: true });
     }
 
-    await this.copyDefaultSkills();
-    await this.createConfig();
+    const configExists = await this.exists();
+    if (!configExists) {
+      await this.copyDefaultSkills();
+      await this.createConfig();
+    }
   }
 
   async exists(): Promise<boolean> {
     try {
-      await fs.access(this.basePath);
+      await fs.access(path.join(this.basePath, "meta/config.json"));
       return true;
     } catch {
       return false;
@@ -32,13 +46,13 @@ export class WorkspaceManager {
 
   async readFile(relativePath: string): Promise<string> {
     const fullPath = path.join(this.basePath, relativePath);
-    return fs.readFile(fullPath, 'utf-8');
+    return fs.readFile(fullPath, "utf-8");
   }
 
   async writeFile(relativePath: string, content: string): Promise<void> {
     const fullPath = path.join(this.basePath, relativePath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.writeFile(fullPath, content, 'utf-8');
+    await fs.writeFile(fullPath, content, "utf-8");
   }
 
   async deleteFile(relativePath: string): Promise<void> {
@@ -68,21 +82,25 @@ export class WorkspaceManager {
     return results;
   }
 
-  async getConfig(): Promise<UserConfig> {
-    const content = await this.readFile('meta/config.json');
+  async getConfig(): Promise<WorkspaceConfig> {
+    const content = await this.readFile("meta/config.json");
     return JSON.parse(content);
   }
 
-  async updateConfig(updates: Partial<UserConfig>): Promise<void> {
+  async updateConfig(updates: Partial<WorkspaceConfig>): Promise<void> {
     const config = await this.getConfig();
-    const updated = { ...config, ...updates, lastActive: new Date().toISOString() };
-    await this.writeFile('meta/config.json', JSON.stringify(updated, null, 2));
+    const updated = {
+      ...config,
+      ...updates,
+      lastActive: new Date().toISOString(),
+    };
+    await this.writeFile("meta/config.json", JSON.stringify(updated, null, 2));
   }
 
   private async searchRecursive(
     dir: string,
     query: string,
-    results: SearchResult[]
+    results: SearchResult[],
   ): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -91,11 +109,11 @@ export class WorkspaceManager {
 
       if (entry.isDirectory()) {
         await this.searchRecursive(fullPath, query, results);
-      } else if (entry.name.endsWith('.md')) {
-        const content = await fs.readFile(fullPath, 'utf-8');
+      } else if (entry.name.endsWith(".md")) {
+        const content = await fs.readFile(fullPath, "utf-8");
         if (content.toLowerCase().includes(query)) {
           results.push({
-            path: fullPath.replace(this.basePath, ''),
+            path: fullPath.replace(this.basePath, ""),
             snippet: this.extractSnippet(content, query),
           });
         }
@@ -108,32 +126,34 @@ export class WorkspaceManager {
     const index = lowerContent.indexOf(query);
     const start = Math.max(0, index - 50);
     const end = Math.min(content.length, index + query.length + 50);
-    return '...' + content.slice(start, end) + '...';
+    return "..." + content.slice(start, end) + "...";
   }
 
   private async copyDefaultSkills(): Promise<void> {
-    const defaultSkillsPath = path.join(process.cwd(), 'skills');
+    const defaultSkillsPath = path.join(process.cwd(), "skills");
 
     try {
       const skills = await fs.readdir(defaultSkillsPath);
 
       for (const skill of skills) {
-        const content = await fs.readFile(path.join(defaultSkillsPath, skill), 'utf-8');
+        const content = await fs.readFile(
+          path.join(defaultSkillsPath, skill),
+          "utf-8",
+        );
         await this.writeFile(`skills/${skill}`, content);
       }
     } catch {
-      console.warn('Default skills not found, skipping copy');
+      console.warn("Default skills not found, skipping copy");
     }
   }
 
   private async createConfig(): Promise<void> {
-    const config: UserConfig = {
-      userId: this.userId,
+    const config: WorkspaceConfig = {
       timezone: DEFAULT_TIMEZONE,
       preferences: {},
       createdAt: new Date().toISOString(),
       lastActive: new Date().toISOString(),
     };
-    await this.writeFile('meta/config.json', JSON.stringify(config, null, 2));
+    await this.writeFile("meta/config.json", JSON.stringify(config, null, 2));
   }
 }

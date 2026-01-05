@@ -1,37 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { sendEmail, extractEmailAddress, stripHtmlTags } from '@/lib/sendgrid';
-import { processWithAgent } from '@/lib/agent';
-import { findUserByEmail, createUser, updateUserLastActive } from '@/lib/auth';
-import { getEmailRatelimit, checkRateLimit } from '@/lib/ratelimit';
-import { MESSAGES } from '@vibe-planning/shared';
+import { NextRequest, NextResponse } from "next/server";
+import { sendEmail, extractEmailAddress, stripHtmlTags } from "@/lib/sendgrid";
+import { processWithAgent } from "@/lib/agent";
+import { getEmailRatelimit, checkRateLimit } from "@/lib/ratelimit";
+import { MESSAGES } from "@vibe-planning/shared";
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
-    const fromHeader = formData.get('from') as string;
-    const subject = formData.get('subject') as string;
-    const text = formData.get('text') as string;
-    const html = formData.get('html') as string;
+    const fromHeader = formData.get("from") as string;
+    const subject = formData.get("subject") as string;
+    const text = formData.get("text") as string;
+    const html = formData.get("html") as string;
 
     if (!fromHeader) {
-      return NextResponse.json({ error: 'Missing from address' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing from address" },
+        { status: 400 },
+      );
     }
 
     const fromEmail = extractEmailAddress(fromHeader);
-    const messageBody = text || stripHtmlTags(html || '');
+    const messageBody = text || stripHtmlTags(html || "");
 
     if (!messageBody.trim()) {
-      return NextResponse.json({ error: 'Empty message body' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Empty message body" },
+        { status: 400 },
+      );
     }
 
-    let user = await findUserByEmail(fromEmail);
-
-    if (!user) {
-      user = await createUser({ email: fromEmail });
-    }
-
-    const { success: withinLimit } = await checkRateLimit(getEmailRatelimit(), user.id);
+    const { success: withinLimit } = await checkRateLimit(getEmailRatelimit());
     if (!withinLimit) {
       await sendEmail({
         to: fromEmail,
@@ -41,11 +40,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, rateLimited: true });
     }
 
-    await updateUserLastActive(user.id);
-
     const agentResponse = await processWithAgent({
-      userId: user.id,
-      channel: 'email',
+      channel: "email",
       message: messageBody,
       context: { subject },
     });
@@ -62,7 +58,7 @@ export async function POST(req: NextRequest) {
       tokensUsed: agentResponse.metadata.tokensUsed,
     });
   } catch (error) {
-    console.error('[Email Inbound] Error:', error);
-    return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
+    console.error("[Email Inbound] Error:", error);
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 }

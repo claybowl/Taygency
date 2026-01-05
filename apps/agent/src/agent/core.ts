@@ -1,12 +1,19 @@
-import Anthropic from '@anthropic-ai/sdk';
-import type { AgentRequest, AgentResponse, AgentAction, Channel } from '@vibe-planning/shared';
-import { CLAUDE_CONFIG } from '@vibe-planning/shared';
-import { WorkspaceManager } from '../filesystem/workspace.js';
-import { TaskManager } from '../filesystem/tasks.js';
-import { ToolExecutor } from './tools.js';
-import { SkillExecutor } from './skills.js';
+import Anthropic from "@anthropic-ai/sdk";
+import type {
+  AgentRequest,
+  AgentResponse,
+  AgentAction,
+  Channel,
+} from "@vibe-planning/shared";
+import { CLAUDE_CONFIG } from "@vibe-planning/shared";
+import { WorkspaceManager } from "../filesystem/workspace.js";
+import { TaskManager } from "../filesystem/tasks.js";
+import { ToolExecutor } from "./tools.js";
+import { SkillExecutor } from "./skills.js";
 
 const client = new Anthropic();
+
+let agentInstance: AgentCore | null = null;
 
 export class AgentCore {
   private workspace: WorkspaceManager;
@@ -14,11 +21,18 @@ export class AgentCore {
   private tools: ToolExecutor;
   private skills: SkillExecutor;
 
-  constructor(userId: string) {
-    this.workspace = new WorkspaceManager(userId);
+  constructor() {
+    this.workspace = WorkspaceManager.getInstance();
     this.tasks = new TaskManager(this.workspace);
     this.tools = new ToolExecutor(this.workspace);
     this.skills = new SkillExecutor(this.workspace);
+  }
+
+  static getInstance(): AgentCore {
+    if (!agentInstance) {
+      agentInstance = new AgentCore();
+    }
+    return agentInstance;
   }
 
   async ensureWorkspace(): Promise<void> {
@@ -34,7 +48,11 @@ export class AgentCore {
     const workspaceContext = await this.buildContext();
     const availableSkills = await this.skills.listSkills();
 
-    const systemPrompt = this.buildSystemPrompt(workspaceContext, availableSkills, request.channel);
+    const systemPrompt = this.buildSystemPrompt(
+      workspaceContext,
+      availableSkills,
+      request.channel,
+    );
     const tools = this.tools.getToolDefinitions();
 
     const actions: AgentAction[] = [];
@@ -42,7 +60,10 @@ export class AgentCore {
     const skillsExecuted: string[] = [];
 
     const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: `[Channel: ${request.channel}]\n\n${request.message}` },
+      {
+        role: "user",
+        content: `[Channel: ${request.channel}]\n\n${request.message}`,
+      },
     ];
 
     let response = await client.messages.create({
@@ -55,9 +76,9 @@ export class AgentCore {
 
     totalTokens += response.usage.input_tokens + response.usage.output_tokens;
 
-    while (response.stop_reason === 'tool_use') {
+    while (response.stop_reason === "tool_use") {
       const toolUseBlocks = response.content.filter(
-        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
       );
 
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
@@ -66,31 +87,31 @@ export class AgentCore {
         try {
           const result = await this.tools.execute(
             toolUse.name,
-            toolUse.input as Record<string, unknown>
+            toolUse.input as Record<string, unknown>,
           );
           actions.push(result.action);
 
-          if (result.action.type === 'skill_executed') {
+          if (result.action.type === "skill_executed") {
             skillsExecuted.push(result.action.skill);
           }
 
           toolResults.push({
-            type: 'tool_result',
+            type: "tool_result",
             tool_use_id: toolUse.id,
             content: JSON.stringify(result.result),
           });
         } catch (error) {
           toolResults.push({
-            type: 'tool_result',
+            type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            content: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
             is_error: true,
           });
         }
       }
 
-      messages.push({ role: 'assistant', content: response.content });
-      messages.push({ role: 'user', content: toolResults });
+      messages.push({ role: "assistant", content: response.content });
+      messages.push({ role: "user", content: toolResults });
 
       response = await client.messages.create({
         model: CLAUDE_CONFIG.model,
@@ -104,12 +125,12 @@ export class AgentCore {
     }
 
     const textBlock = response.content.find(
-      (block): block is Anthropic.TextBlock => block.type === 'text'
+      (block): block is Anthropic.TextBlock => block.type === "text",
     );
 
     return {
       success: true,
-      message: textBlock?.text ?? 'Done!',
+      message: textBlock?.text ?? "Done!",
       actions,
       metadata: {
         tokensUsed: totalTokens,
@@ -120,19 +141,21 @@ export class AgentCore {
   }
 
   private async buildContext(): Promise<string> {
-    const activeTasks = await this.tasks.listTasks('active');
+    const activeTasks = await this.tasks.listTasks("active");
     const recentTasks = activeTasks.slice(0, 5);
 
     let config;
     try {
       config = await this.workspace.getConfig();
     } catch {
-      config = { timezone: 'America/Chicago' };
+      config = { timezone: "America/Chicago" };
     }
 
     const tasksSummary = recentTasks.length
-      ? recentTasks.map((t) => `- ${t.title} [${t.priority}] (${t.category})`).join('\n')
-      : 'No active tasks';
+      ? recentTasks
+          .map((t) => `- ${t.title} [${t.priority}] (${t.category})`)
+          .join("\n")
+      : "No active tasks";
 
     return `Active tasks: ${activeTasks.length}
 User timezone: ${config.timezone}
@@ -144,12 +167,12 @@ ${tasksSummary}`;
   private buildSystemPrompt(
     workspaceContext: string,
     skills: { name: string; description?: string }[],
-    channel: Channel
+    channel: Channel,
   ): string {
     const channelGuidance =
-      channel === 'sms'
-        ? 'Keep responses brief and conversational. Use plain text, no markdown.'
-        : 'You can use markdown formatting. Be helpful but concise.';
+      channel === "sms"
+        ? "Keep responses brief and conversational. Use plain text, no markdown."
+        : "You can use markdown formatting. Be helpful but concise.";
 
     return `You are Vibe Planning, an AI task management assistant.
 
@@ -160,7 +183,7 @@ Help users manage their tasks through natural conversation. You operate on a fil
 ${workspaceContext}
 
 ## Available Skills
-${skills.map((s) => `- ${s.name}: ${s.description ?? 'No description'}`).join('\n')}
+${skills.map((s) => `- ${s.name}: ${s.description ?? "No description"}`).join("\n")}
 
 ## Tools Available
 - create_task: Create a new task file
