@@ -40,3 +40,17 @@ coverage
 # Misc
 *.tsbuildinfo
 *.log
+
+# Cloned/development repos (not part of this project)
+cli/
+decap-cms/
+grafana-repo/
+kibana/
+vercel-repo/
+vercel_temp/
+
+# Temp files
+nul
+
+# Task data - uncomment if you DON'T want to track in git
+# task-data/
