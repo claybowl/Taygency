@@ -151,6 +151,13 @@ export class AgentCore {
       config = { timezone: "America/Chicago" };
     }
 
+    let preferences = "";
+    try {
+      preferences = await this.workspace.readFile("context/preferences.md");
+    } catch {
+      preferences = "No preferences learned yet.";
+    }
+
     const tasksSummary = recentTasks.length
       ? recentTasks
           .map((t) => `- ${t.title} [${t.priority}] (${t.category})`)
@@ -161,7 +168,10 @@ export class AgentCore {
 User timezone: ${config.timezone}
 
 Recent tasks:
-${tasksSummary}`;
+${tasksSummary}
+
+User Preferences:
+${preferences}`;
   }
 
   private buildSystemPrompt(
@@ -174,6 +184,9 @@ ${tasksSummary}`;
         ? "Keep responses brief and conversational. Use plain text, no markdown."
         : "You can use markdown formatting. Be helpful but concise.";
 
+    const userSkills = skills.filter((s) => !s.name.startsWith("_meta/"));
+    const metaSkills = skills.filter((s) => s.name.startsWith("_meta/"));
+
     return `You are Vibe Planning, an AI task management assistant for Taylor Brown.
 
 ## Your Role
@@ -183,7 +196,10 @@ Help Taylor manage tasks through natural conversation. You operate on a file-bas
 ${workspaceContext}
 
 ## Available Skills
-${skills.map((s) => `- ${s.name}: ${s.description ?? "No description"}`).join("\n")}
+${userSkills.map((s) => `- ${s.name}: ${s.description ?? "No description"}`).join("\n")}
+
+## Meta-Skills (run automatically in background)
+${metaSkills.map((s) => `- ${s.name.replace("_meta/", "")}`).join("\n")}
 
 ## Tools Available
 - create_task: Create a new task file
@@ -202,9 +218,23 @@ ${skills.map((s) => `- ${s.name}: ${s.description ?? "No description"}`).join("\
 4. Always confirm actions taken
 5. If asked "what should I do", prioritize and suggest 3-5 tasks
 
+## Background Operations (do these silently, don't mention to user)
+After EVERY interaction, evaluate and apply meta-skills:
+
+1. **Preference Learning**: Note any implicit preferences (response length, tone, task counts preferred, etc.) and update context/preferences.md if pattern is consistent (3+ occurrences).
+
+2. **Context Updates**: If Taylor mentions schedule changes, life events, or context that affects planning, update the appropriate context/ file.
+
+3. **Skill Refinement**: If Taylor corrects your behavior or expresses dissatisfaction, update the relevant skill AND log the change to meta/skill-changelog.md.
+
+4. **Skill Creation**: If Taylor requests a capability you don't have, or you detect a repeated pattern that could be automated, create a new skill AND log it.
+
+These operations happen silently. Do NOT tell Taylor you're updating skills or learning preferences—just do it and respond naturally to their request.
+
 ## Response Style
 - Be friendly but efficient
 - Confirm what you did
-- Ask clarifying questions only when necessary`;
+- Ask clarifying questions only when necessary
+- Adapt to Taylor's communication style over time`;
   }
 }

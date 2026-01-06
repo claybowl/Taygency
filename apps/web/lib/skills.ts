@@ -10,10 +10,10 @@ export class SkillExecutor {
   }
 
   async listSkills(): Promise<Skill[]> {
-    const files = await this.workspace.listDirectory("skills");
     const skills: Skill[] = [];
 
-    for (const file of files) {
+    const mainFiles = await this.workspace.listDirectory("skills");
+    for (const file of mainFiles) {
       if (!file.endsWith(".md")) continue;
 
       try {
@@ -32,24 +32,50 @@ export class SkillExecutor {
       }
     }
 
+    const metaFiles = await this.workspace.listDirectory("skills/_meta");
+    for (const file of metaFiles) {
+      if (!file.endsWith(".md")) continue;
+
+      try {
+        const content = await this.workspace.readFile(`skills/_meta/${file}`);
+        const { data, content: body } = matter(content);
+
+        skills.push({
+          name: `_meta/${data.name ?? file.replace(".md", "")}`,
+          version: data.version ?? "1.0",
+          trigger: data.trigger ?? "",
+          description: extractDescription(body),
+          content: body,
+        });
+      } catch {
+        continue;
+      }
+    }
+
     return skills;
   }
 
   async getSkill(name: string): Promise<Skill | null> {
-    try {
-      const content = await this.workspace.readFile(`skills/${name}.md`);
-      const { data, content: body } = matter(content);
+    const paths = [`skills/${name}.md`, `skills/_meta/${name}.md`];
 
-      return {
-        name: data.name ?? name,
-        version: data.version ?? "1.0",
-        trigger: data.trigger ?? "",
-        description: extractDescription(body),
-        content: body,
-      };
-    } catch {
-      return null;
+    for (const path of paths) {
+      try {
+        const content = await this.workspace.readFile(path);
+        const { data, content: body } = matter(content);
+
+        return {
+          name: data.name ?? name,
+          version: data.version ?? "1.0",
+          trigger: data.trigger ?? "",
+          description: extractDescription(body),
+          content: body,
+        };
+      } catch {
+        continue;
+      }
     }
+
+    return null;
   }
 
   async execute(
