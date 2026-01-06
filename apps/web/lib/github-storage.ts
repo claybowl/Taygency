@@ -269,15 +269,9 @@ export class GitHubStorageManager {
       });
       return true;
     } catch (error: unknown) {
-      if (
-        error &&
-        typeof error === "object" &&
-        "status" in error &&
-        error.status === 404
-      ) {
-        return false;
-      }
-      throw error;
+      // Suppress all errors - if it doesn't exist, return false
+      // This prevents crashes from rate limiting, network issues, etc.
+      return false;
     }
   }
 

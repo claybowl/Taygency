@@ -11,8 +11,8 @@ export const openrouter = new OpenAI({
 
 export function getOpenRouterModel(): string {
   // OpenRouter model identifiers
-  // Use "openrouter/opus-4.5" or "anthropic/claude-sonnet-4-20250514" routed through OpenRouter
-  return process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4-20250514";
+  // See https://openrouter.ai/models for available models
+  return process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4";
 }
 
 export function requireOpenRouterKey(): void {

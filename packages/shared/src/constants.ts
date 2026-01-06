@@ -55,7 +55,7 @@ export const API_ENDPOINTS = {
 } as const;
 
 export const CLAUDE_CONFIG = {
-  model: "anthropic/claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4",
   maxTokens: 4096,
 } as const;
 
