@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Planning AI | Structural Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a1a1a;
+            --accent: #6366f1;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #dc2626;
+            --bg: #f9fafb;
+            --surface: #ffffff;
+            --border: #e5e7eb;
+            --text: #111827;
+            --muted: #6b7280;
+            --hatch-color: rgba(0, 0, 0, 0.03);
+            --vellum-bg: rgba(255, 255, 255, 0.85);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* SVG Filters for Texture */
+        .svg-filter-container {
+            position: absolute;
+            width: 0;
+            height: 0;
+            visibility: hidden;
+        }
+
+        /* Hatching Pattern */
+        .hatch-bg {
+            background-image: repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 8px,
+                var(--hatch-color) 8px,
+                var(--hatch-color) 9px
+            );
+        }
+
+        /* Structuralism Layout Elements */
+        .grid-line {
+            position: fixed;
+            background: var(--border);
+            z-index: 0;
+            pointer-events: none;
+        }
+        .grid-v { width: 1px; height: 100vh; top: 0; }
+        .grid-h { height: 1px; width: 100vw; left: 0; }
+
+        /* Sidebar Navigation */
+        aside {
+            width: 260px;
+            height: 100vh;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 2rem 0;
+            z-index: 10;
+            position: relative;
+        }
+
+        .logo {
+            padding: 0 2rem 3rem 2rem;
+            font-weight: 700;
+            font-size: 0.8rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-mark {
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            transform: rotate(45deg);
+        }
+
+        nav {
+            flex-grow: 1;
+        }
+
+        nav ul {
+            list-style: none;
+        }
+
+        nav li {
+            position: relative;
+            margin-bottom: 4px;
+        }
+
+        nav a {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 2rem;
+            text-decoration: none;
+            color: var(--muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-left: 3px solid transparent;
+        }
+
+        nav a:hover {
+            color: var(--text);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        nav a.active {
+            color: var(--accent);
+            background: rgba(99, 102, 241, 0.08);
+            border-left: 3px solid var(--accent);
+        }
+
+        .nav-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 1.5rem 2rem;
+        }
+
+        .simulator-link {
+            color: var(--accent);
+            font-weight: 600;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.05) 0%, transparent 100%);
+        }
+
+        /* Main Content Area */
+        main {
+            flex-grow: 1;
+            height: 100vh;
+            overflow-y: auto;
+            position: relative;
+            z-index: 5;
+            padding: 2rem 3rem;
+        }
+
+        .page-header {
+            margin-bottom: 2.5rem;
+        }
+
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .page-header p {
+            color: var(--muted);
+            font-size: 0.95rem;
+            margin-top: 0.5rem;
+        }
+
+        /* Stats Cards - Structural Style */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .stat-card {
+            background: var(--vellum-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            position: relative;
+            transition: transform 0.2s ease;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: -5px; left: -5px; width: 10px; height: 10px;
+            border-top: 1px solid var(--muted); border-left: 1px solid var(--muted);
+        }
+
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            bottom: -5px; right: -5px; width: 10px; height: 10px;
+            border-bottom: 1px solid var(--muted); border-right: 1px solid var(--muted);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+
+        /* Dashboard Sections */
+        .dashboard-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        .section-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            position: relative;
+        }
+
+        .section-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Activity Feed */
+        .activity-feed {
+            list-style: none;
+        }
+
+        .activity-item {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 1rem;
+            transition: background 0.2s;
+        }
+
+        .activity-item:hover {
+            background: var(--bg);
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .channel-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .channel-email { background: #dbeafe; color: #3b82f6; }
+        .channel-sms { background: #dcfce7; color: #22c55e; }
+
+        .activity-content {
+            flex-grow: 1;
+        }
+
+        .activity-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+
+        .activity-time {
+            font-size: 0.75rem;
+            color: var(--muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .activity-preview {
+            font-size: 0.9rem;
+            color: var(--text);
+            line-height: 1.4;
+        }
+
+        /* Visualizations */
+        .chart-placeholder {
+            height: 200px;
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            padding: 1.5rem;
+        }
+
+        .bar {
+            flex-grow: 1;
+            background: var(--accent);
+            position: relative;
+            transition: height 1s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .bar::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.6rem;
+            color: var(--muted);
+        }
+
+        /* Tasks View */
+        .task-card {
+            background: white;
+            border: 1px solid var(--border);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .priority-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            text-transform: uppercase;
+            border: 1px solid currentColor;
+            width: fit-content;
+        }
+
+        .priority-high { color: var(--danger); }
+        .priority-medium { color: var(--warning); }
+        .priority-low { color: var(--success); }
+
+        /* Simulator Styles */
+        .simulator-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            border: 1px solid var(--border);
+            height: calc(100vh - 200px);
+        }
+
+        .composer, .response-view {
+            padding: 2.5rem;
+            overflow-y: auto;
+        }
+
+        .composer {
+            border-right: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .response-view {
+            background: #1a1a1a;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+            color: var(--muted);
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        input:focus, textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* File Tree */
+        .file-browser {
+            display: flex;
+            height: 600px;
+            border: 1px solid var(--border);
+        }
+
+        .file-tree {
+            width: 250px;
+            border-right: 1px solid var(--border);
+            padding: 1rem;
+            background: var(--bg);
+        }
+
+        .file-content {
+            flex-grow: 1;
+            padding: 2rem;
+            background: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            overflow-y: auto;
+        }
+
+        .tree-item {
+            padding: 4px 0;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tree-item:hover { color: var(--accent); }
+
+        /* Transitions */
+        .page-transition {
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Utilities */
+        .hidden { display: none; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Structural Grid Lines -->
+    <div class="grid-line grid-v" style="left: 260px;"></div>
+    <div class="grid-line grid-v" style="left: 60%;"></div>
+    <div class="grid-line grid-h" style="top: 100px;"></div>
+
+    <!-- Navigation -->
+    <aside>
+        <div class="logo">
+            <div class="logo-mark"></div>
+            <span>Vibe Planning</span>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="#" class="active" onclick="showPage('overview')">Overview</a></li>
+                <li><a href="#" onclick="showPage('tasks')">Tasks</a></li>
+                <li><a href="#" onclick="showPage('skills')">Skills</a></li>
+                <li><a href="#" onclick="showPage('files')">Files</a></li>
+                <li><a href="#" onclick="showPage('logs')">Logs</a></li>
+                <li><a href="#" onclick="showPage('context')">Context</a></li>
+                <div class="nav-divider"></div>
+                <li><a href="#" class="simulator-link" onclick="showPage('simulator')">Simulator</a></li>
+            </ul>
+        </nav>
+    </aside>
+
+    <main id="content-area">
+        <!-- Overview Page -->
+        <section id="overview" class="page-transition">
+            <div class="page-header">
+                <h1>System Overview</h1>
+                <p>Real-time monitoring and agent health diagnostics.</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card hatch-bg">
+                    <span class="stat-label">Active Tasks</span>
+                    <div class="stat-value">12</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Completed Today</span>
+                    <div class="stat-value">48</div>
+                </div>
+                <div class="stat-card hatch-bg">
+                    <span class="stat-label">Total Skills</span>
+                    <div class="stat-value">24 <small style="font-size: 0.6em; color: var(--muted);">/ 8 meta</small></div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Last Activity</span>
+                    <div class="stat-value" style="font-size: 1rem;">2m 14s ago</div>
+                </div>
+            </div>
+
+            <div class="dashboard-content">
+                <div class="section-box">
+                    <div class="section-header">
+                        <span class="section-title">Recent Activity Feed</span>
+                        <span class="activity-time">Live Sync Active</span>
+                    </div>
+                    <ul class="activity-feed">
+                        <li class="activity-item">
+                            <div class="channel-icon channel-email">E</div>
+                            <div class="activity-content">
+                                <div class="activity-meta">
+                                    <span class="mono" style="font-weight: 600; font-size: 0.8rem;">incoming_email</span>
+                                    <span class="activity-time">14:02:11</span>
+                                </div>
+                                <p class="activity-preview">"Can we reschedule the sync to 4 PM? Check my availability..."</p>
+                            </div>
+                        </li>
+                        <li class="activity-item">
+                            <div class="channel-icon channel-sms">S</div>
+                            <div class="activity-content">
+                                <div class="activity-meta">
+                                    <span class="mono" style="font-weight: 600; font-size: 0.8rem;">outgoing_sms</span>
+                                    <span class="activity-time">13:58:45</span>
+                                </div>
+                                <p class="activity-preview">"Your grocery list has been updated. Reminder: Milk."</p>
+                            </div>
+                        </li>
+                        <li class="activity-item">
+                            <div class="channel-icon channel-email" style="background:#e5e7eb; color:#4b5563;">⚙</div>
+                            <div class="activity-content">
+                                <div class="activity-meta">
+                                    <span class="mono" style="font-weight: 600; font-size: 0.8rem;">skill_executed</span>
+                                    <span class="activity-time">13:45:02</span>
+                                </div>
+                                <p class="activity-preview">Pattern recognized: Preference for morning meetings (95% confidence).</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="section-box hatch-bg">
+                    <div class="section-header">
+                        <span class="section-title">Task Distribution</span>
+                    </div>
+                    <div class="chart-placeholder">
+                        <div class="bar" style="height: 80%;" data-label="Work"></div>
+                        <div class="bar" style="height: 40%;" data-label="Life"></div>
+                        <div class="bar" style="height: 60%;" data-label="Agent"></div>
+                        <div class="bar" style="height: 25%;" data-label="Other"></div>
+                    </div>
+                    <div style="padding: 1.5rem; border-top: 1px solid var(--border);">
+                        <div class="stat-label">Priority Ratio</div>
+                        <div style="height: 8px; background: #eee; display: flex;">
+                            <div style="width: 20%; background: var(--danger);"></div>
+                            <div style="width: 50%; background: var(--warning);"></div>
+                            <div style="width: 30%; background: var(--success);"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tasks Page -->
+        <section id="tasks" class="page-transition hidden">
+            <div class="page-header">
+                <h1>Task Management</h1>
+                <p>Structural overview of all planned agent operations.</p>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+                <button class="btn btn-primary" style="background: var(--text);">Active</button>
+                <button class="btn" style="border: 1px solid var(--border);">Completed</button>
+                <button class="btn" style="border: 1px solid var(--border);">Someday</button>
+            </div>
+
+            <div class="task-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <span class="priority-badge priority-high">High Priority</span>
+                        <h3 style="margin-top: 0.5rem;">Review Q4 Planning Strategy</h3>
+                        <p style="color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem;">Category: Strategic Planning • Due: Today, 5:00 PM</p>
+                    </div>
+                    <div class="mono" style="font-size: 0.8rem; text-align: right;">
+                        <div>⚡ 80% Energy</div>
+                        <div>⏱ 45 mins</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 0.5rem;">
+                    <span style="background: #f3f4f6; padding: 2px 8px; font-size: 0.75rem;">Source: Email</span>
+                    <span style="background: #f3f4f6; padding: 2px 8px; font-size: 0.75rem;">ID: TSK-8821</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Files Page -->
+        <section id="files" class="page-transition hidden">
+            <div class="page-header">
+                <h1>File Browser</h1>
+                <p>Inspect the underlying data structure of the planning agent.</p>
+            </div>
+
+            <div class="file-browser">
+                <div class="file-tree">
+                    <div class="tree-item">📁 tasks</div>
+                    <div class="tree-item">📁 skills</div>
+                    <div class="tree-item">📁 context</div>
+                    <div class="tree-item" style="padding-left: 20px;">📄 preferences.md</div>
+                    <div class="tree-item" style="padding-left: 20px;">📄 patterns.md</div>
+                    <div class="tree-item">📁 meta</div>
+                    <div class="tree-item" style="padding-left: 20px; color: var(--accent);">📄 config.json</div>
+                    <div class="tree-item">📁 inbox</div>
+                </div>
+                <div class="file-content">
+<pre>{
+  "agent_id": "vibe-planning-01",
+  "version": "2.4.0-stable",
+  "capabilities": [
+    "nlp_classification",
+    "calendar_orchestration",
+    "energy_modeling"
+  ],
+  "latency_threshold": 250,
+  "default_channel": "email"
+}</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Simulator Page -->
+        <section id="simulator" class="page-transition hidden">
+            <div class="page-header">
+                <h1>Agent Simulator</h1>
+                <p>Send mock triggers to test system response logic.</p>
+            </div>
+
+            <div class="simulator-layout">
+                <div class="composer">
+                    <div class="input-group">
+                        <label>Channel</label>
+                        <select id="sim-channel">
+                            <option value="email">Email</option>
+                            <option value="sms">SMS</option>
+                        </select>
+                    </div>
+                    <div id="email-fields">
+                        <div class="input-group">
+                            <label>From</label>
+                            <input type="text" placeholder="sender@domain.com">
+                        </div>
+                        <div class="input-group">
+                            <label>Subject</label>
+                            <input type="text" placeholder="Subject line...">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Message Body</label>
+                        <textarea rows="8" placeholder="Type mock message here..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="simulateSend()">Dispatch Trigger</button>
+                    
+                    <div style="margin-top: 2rem;">
+                        <label class="stat-label">Quick Presets</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <button class="btn" style="font-size: 0.7rem; border: 1px solid var(--border);">Reschedule Meeting</button>
+                            <button class="btn" style="font-size: 0.7rem; border: 1px solid var(--border);">New Task Request</button>
+                            <button class="btn" style="font-size: 0.7rem; border: 1px solid var(--border);">Complex Conflict</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="response-view" id="sim-response">
+                    <div style="color: #666;">// Waiting for input...</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('section').forEach(page => {
+                page.classList.add('hidden');
+            });
+
+            // Show selected page
+            document.getElementById(pageId).classList.remove('hidden');
+
+            // Update Nav
+            document.querySelectorAll('nav a').forEach(link => {
+                link.classList.remove('active');
+                if(link.getAttribute('onclick').includes(pageId)) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        function simulateSend() {
+            const responseView = document.getElementById('sim-response');
+            responseView.innerHTML = `<div class="mono" style="color: var(--accent);">[PROCESSING...]</div>`;
+            
+            setTimeout(() => {
+                responseView.innerHTML = `
+<div style="margin-bottom: 2rem;">
+<span style="color: #22c55e;">> RESPONSE RECEIVED</span>
+<p style="margin-top: 1rem; color: #fff; font-family: 'Inter';">"I've analyzed the request. Based on your energy levels and existing commitments, I recommend scheduling this for Tuesday at 10:00 AM. Should I proceed?"</p>
+</div>
+
+<div style="border-top: 1px solid #333; padding-top: 1rem;">
+<div style="color: #666; font-size: 0.8rem; margin-bottom: 1rem;">METADATA</div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8rem;">
+    <div>Tokens: <span style="color: var(--accent);">142</span></div>
+    <div>Latency: <span style="color: var(--accent);">842ms</span></div>
+    <div>Skill: <span style="color: var(--accent);">calendar_optim</span></div>
+    <div>Confidence: <span style="color: var(--accent);">0.98</span></div>
+</div>
+</div>
+
+<div style="margin-top: 2rem;">
+<div style="color: #666; font-size: 0.8rem; margin-bottom: 1rem;">ACTIONS TAKEN</div>
+<ul style="list-style: none; font-size: 0.8rem; color: #aaa;">
+    <li>• parsed_intent: reschedule_request</li>
+    <li>• context_lookup: user_calendar_week_42</li>
+    <li>• energy_score_calc: optimized_slot_found</li>
+</ul>
+</div>
+                `;
+            }, 1200);
+        }
+
+        // Initialize with default bars animation
+        window.onload = () => {
+            const bars = document.querySelectorAll('.bar');
+            bars.forEach(bar => {
+                const height = bar.style.height;
+                bar.style.height = '0';
+                setTimeout(() => {
+                    bar.style.height = height;
+                }, 300);
+            });
+        };
+    </script>
+</body>
+</html>
