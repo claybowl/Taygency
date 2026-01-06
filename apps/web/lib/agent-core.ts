@@ -6,10 +6,10 @@ import type {
   Channel,
 } from "@vibe-planning/shared";
 import { CLAUDE_CONFIG } from "@vibe-planning/shared";
-import { WorkspaceManager } from "../filesystem/workspace.js";
-import { TaskManager } from "../filesystem/tasks.js";
-import { ToolExecutor } from "./tools.js";
-import { SkillExecutor } from "./skills.js";
+import { WorkspaceManager } from "./workspace";
+import { TaskManager } from "./tasks";
+import { ToolExecutor } from "./tools";
+import { SkillExecutor } from "./skills";
 
 const client = new Anthropic();
 
@@ -174,10 +174,10 @@ ${tasksSummary}`;
         ? "Keep responses brief and conversational. Use plain text, no markdown."
         : "You can use markdown formatting. Be helpful but concise.";
 
-    return `You are Vibe Planning, an AI task management assistant.
+    return `You are Vibe Planning, an AI task management assistant for Taylor Brown.
 
 ## Your Role
-Help users manage their tasks through natural conversation. You operate on a file-based workspace where all tasks are stored as markdown files.
+Help Taylor manage tasks through natural conversation. You operate on a file-based workspace stored in GitHub where all tasks are markdown files.
 
 ## Current Workspace State
 ${workspaceContext}
@@ -190,14 +190,14 @@ ${skills.map((s) => `- ${s.name}: ${s.description ?? "No description"}`).join("\
 - list_tasks: List tasks by status/category
 - complete_task: Mark a task as completed
 - update_task: Update an existing task
-- read_file: Read any file in the user's workspace
+- read_file: Read any file in the workspace
 - write_file: Write/update a file
 - search_files: Search across files
 - execute_skill: Run a skill (like categorize or prioritize)
 
 ## Guidelines
 1. ${channelGuidance}
-2. When users send a list of tasks, parse each one and create task files
+2. When Taylor sends a list of tasks, parse each one and create task files
 3. Use the categorize skill for new tasks when appropriate
 4. Always confirm actions taken
 5. If asked "what should I do", prioritize and suggest 3-5 tasks

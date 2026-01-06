@@ -1,6 +1,6 @@
-import matter from 'gray-matter';
-import type { Skill, SkillResult } from '@vibe-planning/shared';
-import { WorkspaceManager } from '../filesystem/workspace.js';
+import matter from "gray-matter";
+import type { Skill, SkillResult } from "@vibe-planning/shared";
+import { WorkspaceManager } from "./workspace";
 
 export class SkillExecutor {
   private workspace: WorkspaceManager;
@@ -10,20 +10,20 @@ export class SkillExecutor {
   }
 
   async listSkills(): Promise<Skill[]> {
-    const files = await this.workspace.listDirectory('skills');
+    const files = await this.workspace.listDirectory("skills");
     const skills: Skill[] = [];
 
     for (const file of files) {
-      if (!file.endsWith('.md')) continue;
+      if (!file.endsWith(".md")) continue;
 
       try {
         const content = await this.workspace.readFile(`skills/${file}`);
         const { data, content: body } = matter(content);
 
         skills.push({
-          name: data.name ?? file.replace('.md', ''),
-          version: data.version ?? '1.0',
-          trigger: data.trigger ?? '',
+          name: data.name ?? file.replace(".md", ""),
+          version: data.version ?? "1.0",
+          trigger: data.trigger ?? "",
           description: extractDescription(body),
           content: body,
         });
@@ -42,8 +42,8 @@ export class SkillExecutor {
 
       return {
         name: data.name ?? name,
-        version: data.version ?? '1.0',
-        trigger: data.trigger ?? '',
+        version: data.version ?? "1.0",
+        trigger: data.trigger ?? "",
         description: extractDescription(body),
         content: body,
       };
@@ -52,7 +52,10 @@ export class SkillExecutor {
     }
   }
 
-  async execute(name: string, params: Record<string, unknown> = {}): Promise<SkillResult> {
+  async execute(
+    name: string,
+    _params: Record<string, unknown> = {},
+  ): Promise<SkillResult> {
     const skill = await this.getSkill(name);
 
     if (!skill) {
@@ -73,6 +76,6 @@ function extractDescription(body: string): string {
   const purposeMatch = body.match(/## Purpose\n([\s\S]*?)(?=\n## |\n*$)/);
   if (purposeMatch) return purposeMatch[1].trim();
 
-  const lines = body.split('\n').filter((l) => l.trim());
-  return lines[0]?.replace(/^#+ /, '') ?? '';
+  const lines = body.split("\n").filter((l) => l.trim());
+  return lines[0]?.replace(/^#+ /, "") ?? "";
 }

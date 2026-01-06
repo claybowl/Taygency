@@ -1,23 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { TasksResponse } from "@vibe-planning/shared";
-
-const FLY_AGENT_URL = process.env.FLY_AGENT_URL!;
-const AGENT_SECRET = process.env.AGENT_SECRET!;
+import { WorkspaceManager } from "@/lib/workspace";
+import { TaskManager } from "@/lib/tasks";
 
 export async function GET(req: NextRequest) {
   try {
-    const status = req.nextUrl.searchParams.get("status") ?? "active";
+    const status = req.nextUrl.searchParams.get("status") as
+      | "active"
+      | "completed"
+      | "someday"
+      | null;
 
-    const response = await fetch(`${FLY_AGENT_URL}/tasks?status=${status}`, {
-      headers: { Authorization: `Bearer ${AGENT_SECRET}` },
-    });
+    const workspace = WorkspaceManager.getInstance();
+    const tasks = new TaskManager(workspace);
 
-    if (!response.ok) {
-      throw new Error(`Agent returned ${response.status}`);
-    }
+    const taskList = await tasks.listTasks(status ?? undefined);
 
-    const data: TasksResponse = await response.json();
-    return NextResponse.json(data);
+    const categories = taskList.reduce(
+      (acc, task) => {
+        const cat = task.category;
+        const existing = acc.find((c) => c.name === cat);
+        if (existing) {
+          existing.count++;
+        } else {
+          acc.push({ name: cat, count: 1 });
+        }
+        return acc;
+      },
+      [] as { name: string; count: number }[],
+    );
+
+    const response: TasksResponse = {
+      tasks: taskList,
+      categories,
+      stats: {
+        total: taskList.length,
+        active: taskList.filter((t) => t.status === "active").length,
+        completed: taskList.filter((t) => t.status === "completed").length,
+      },
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error("[Dashboard Tasks] Error:", error);
     return NextResponse.json(

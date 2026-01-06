@@ -1,7 +1,16 @@
-import matter from 'gray-matter';
-import type { Task, TaskInput, TaskStatus, TaskPriority } from '@vibe-planning/shared';
-import { DEFAULT_PRIORITY, DEFAULT_CATEGORY, DEFAULT_STATUS } from '@vibe-planning/shared';
-import { WorkspaceManager } from './workspace.js';
+import matter from "gray-matter";
+import type {
+  Task,
+  TaskInput,
+  TaskStatus,
+  TaskPriority,
+} from "@vibe-planning/shared";
+import {
+  DEFAULT_PRIORITY,
+  DEFAULT_CATEGORY,
+  DEFAULT_STATUS,
+} from "@vibe-planning/shared";
+import { WorkspaceManager } from "./workspace";
 
 export class TaskManager {
   private workspace: WorkspaceManager;
@@ -25,7 +34,7 @@ export class TaskManager {
       context: input.context,
       due: input.due,
       project: input.project,
-      source: source as Task['source'],
+      source: source as Task["source"],
       notes: input.notes,
       subtasks: input.subtasks?.map((title) => ({ title, completed: false })),
       createdAt: now,
@@ -39,9 +48,11 @@ export class TaskManager {
   }
 
   async getTask(taskId: string): Promise<Task | null> {
-    for (const status of ['active', 'completed', 'someday'] as const) {
+    for (const status of ["active", "completed", "someday"] as const) {
       try {
-        const content = await this.workspace.readFile(`tasks/${status}/${taskId}.md`);
+        const content = await this.workspace.readFile(
+          `tasks/${status}/${taskId}.md`,
+        );
         return this.parseTaskFile(content, taskId);
       } catch {
         continue;
@@ -50,7 +61,10 @@ export class TaskManager {
     return null;
   }
 
-  async updateTask(taskId: string, updates: Partial<Task>): Promise<Task | null> {
+  async updateTask(
+    taskId: string,
+    updates: Partial<Task>,
+  ): Promise<Task | null> {
     const task = await this.getTask(taskId);
     if (!task) return null;
 
@@ -77,22 +91,24 @@ export class TaskManager {
   }
 
   async completeTask(taskId: string): Promise<Task | null> {
-    return this.updateTask(taskId, { status: 'completed' });
+    return this.updateTask(taskId, { status: "completed" });
   }
 
   async listTasks(status?: TaskStatus, category?: string): Promise<Task[]> {
-    const statuses: TaskStatus[] = status ? [status] : ['active', 'completed', 'someday'];
+    const statuses: TaskStatus[] = status
+      ? [status]
+      : ["active", "completed", "someday"];
     const tasks: Task[] = [];
 
     for (const s of statuses) {
       const files = await this.workspace.listDirectory(`tasks/${s}`);
 
       for (const file of files) {
-        if (!file.endsWith('.md')) continue;
+        if (!file.endsWith(".md")) continue;
 
         try {
           const content = await this.workspace.readFile(`tasks/${s}/${file}`);
-          const taskId = file.replace('.md', '');
+          const taskId = file.replace(".md", "");
           const task = this.parseTaskFile(content, taskId);
 
           if (task && (!category || task.category === category)) {
@@ -105,7 +121,11 @@ export class TaskManager {
     }
 
     return tasks.sort((a, b) => {
-      const priorityOrder: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
+      const priorityOrder: Record<TaskPriority, number> = {
+        high: 0,
+        medium: 1,
+        low: 2,
+      };
       return priorityOrder[a.priority] - priorityOrder[b.priority];
     });
   }
@@ -138,7 +158,7 @@ export class TaskManager {
     if (task.subtasks?.length) {
       body += `\n## Subtasks\n`;
       for (const sub of task.subtasks) {
-        body += `- [${sub.completed ? 'x' : ' '}] ${sub.title}\n`;
+        body += `- [${sub.completed ? "x" : " "}] ${sub.title}\n`;
       }
     }
 
@@ -174,14 +194,14 @@ export class TaskManager {
     }
   }
 
-  private parseSubtasks(body: string): Task['subtasks'] {
+  private parseSubtasks(body: string): Task["subtasks"] {
     const subtaskRegex = /- \[([ x])\] (.+)/g;
-    const subtasks: Task['subtasks'] = [];
+    const subtasks: Task["subtasks"] = [];
     let match;
 
     while ((match = subtaskRegex.exec(body)) !== null) {
       subtasks.push({
-        completed: match[1] === 'x',
+        completed: match[1] === "x",
         title: match[2],
       });
     }

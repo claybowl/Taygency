@@ -1,8 +1,11 @@
 export const APP_NAME = "Vibe Planning";
 export const DEFAULT_TIMEZONE = "America/Chicago";
 
-// Single-user workspace - no user ID in path
-export const DATA_ROOT = "/data";
+export const GITHUB_CONFIG = {
+  owner: "Claybowl",
+  repo: "Taygency",
+  dataPath: "task-data",
+} as const;
 
 export const WORKSPACE_DIRS = [
   "meta",

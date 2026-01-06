@@ -10,10 +10,13 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@octokit/rest": "^20.0.0",
     "@sendgrid/mail": "^8.1.0",
     "@upstash/ratelimit": "^1.0.0",
     "@upstash/redis": "^1.28.0",
     "@vibe-planning/shared": "*",
+    "gray-matter": "^4.0.3",
     "next": "^14.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

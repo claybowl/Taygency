@@ -1,15 +1,17 @@
 ---
 name: categorize
-version: 1.0
-trigger: new tasks imported or user requests categorization
+version: "1.0"
+trigger: "new tasks imported or user requests categorization"
 ---
 
 # Skill: Categorize Tasks
 
 ## Purpose
+
 Organize tasks into meaningful categories based on context, location, energy required, and type of work.
 
 ## Default Categories
+
 - **work**: Professional tasks, job-related
 - **personal**: Personal life, relationships
 - **home**: House maintenance, chores
@@ -20,6 +22,7 @@ Organize tasks into meaningful categories based on context, location, energy req
 - **someday**: No urgency, future consideration
 
 ## Process
+
 1. Read the task title and any notes
 2. Identify keywords and context clues
 3. Assign primary category
@@ -28,14 +31,15 @@ Organize tasks into meaningful categories based on context, location, energy req
 6. Estimate duration if not specified
 
 ## Examples
-- "Call dentist" -> health, low energy, 5min
-- "Finish Q4 report" -> work, high energy, 2hr
-- "Buy birthday gift for mom" -> personal + errands, medium energy, 30min
-- "Research vacation spots" -> personal, low energy, 30min
-- "Fix leaky faucet" -> home, medium energy, 1hr
+
+- "Call dentist" → health, low energy, 5min
+- "Finish Q4 report" → work, high energy, 2hr
+- "Buy birthday gift for mom" → personal + errands, medium energy, 30min
 
 ## Output
+
 Update the task file with:
+
 - category: primary category
 - energy: low | medium | high
 - duration: estimated time
