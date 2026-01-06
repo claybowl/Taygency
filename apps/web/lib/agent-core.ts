@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type {
   AgentRequest,
   AgentResponse,
@@ -10,8 +10,7 @@ import { WorkspaceManager } from "./workspace";
 import { TaskManager } from "./tasks";
 import { ToolExecutor } from "./tools";
 import { SkillExecutor } from "./skills";
-
-const client = new Anthropic();
+import { getOpenRouterModel } from "./openrouter";
 
 let agentInstance: AgentCore | null = null;
 
@@ -20,12 +19,17 @@ export class AgentCore {
   private tasks: TaskManager;
   private tools: ToolExecutor;
   private skills: SkillExecutor;
+  private client: OpenAI;
 
   constructor() {
     this.workspace = WorkspaceManager.getInstance();
     this.tasks = new TaskManager(this.workspace);
     this.tools = new ToolExecutor(this.workspace);
     this.skills = new SkillExecutor(this.workspace);
+    this.client = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1",
+    });
   }
 
   static getInstance(): AgentCore {
@@ -41,6 +45,21 @@ export class AgentCore {
     }
   }
 
+  private convertToolToOpenAI(tool: {
+    name: string;
+    description?: string;
+    input_schema: Record<string, unknown>;
+  }): OpenAI.Chat.ChatCompletionTool {
+    return {
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description || "",
+        parameters: tool.input_schema as unknown as Record<string, unknown>,
+      },
+    };
+  }
+
   async process(request: AgentRequest): Promise<AgentResponse> {
     const startTime = Date.now();
     await this.ensureWorkspace();
@@ -53,41 +72,48 @@ export class AgentCore {
       availableSkills,
       request.channel,
     );
-    const tools = this.tools.getToolDefinitions();
+
+    const anthropicTools = this.tools.getToolDefinitions();
+    const openaiTools = anthropicTools.map((t) => this.convertToolToOpenAI(t));
 
     const actions: AgentAction[] = [];
     let totalTokens = 0;
     const skillsExecuted: string[] = [];
 
-    const messages: Anthropic.MessageParam[] = [
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       {
         role: "user",
         content: `[Channel: ${request.channel}]\n\n${request.message}`,
       },
     ];
 
-    let response = await client.messages.create({
-      model: CLAUDE_CONFIG.model,
-      max_tokens: CLAUDE_CONFIG.maxTokens,
-      system: systemPrompt,
-      tools,
-      messages,
+    let response = await this.client.chat.completions.create({
+      model: getOpenRouterModel(),
+      max_completion_tokens: CLAUDE_CONFIG.maxTokens,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      tools: openaiTools,
     });
 
-    totalTokens += response.usage.input_tokens + response.usage.output_tokens;
+    const choice = response.choices[0];
+    totalTokens += response.usage?.prompt_tokens || 0;
+    totalTokens += response.usage?.completion_tokens || 0;
 
-    while (response.stop_reason === "tool_use") {
-      const toolUseBlocks = response.content.filter(
-        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-      );
+    while (choice.finish_reason === "tool_calls") {
+      const toolCalls = choice.message.tool_calls || [];
 
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      const toolResults: OpenAI.Chat.ChatCompletionToolMessageParam[] = [];
 
-      for (const toolUse of toolUseBlocks) {
+      for (const toolCall of toolCalls) {
+        const functionCall = (
+          toolCall as unknown as {
+            function: { name: string; arguments: string };
+          }
+        ).function;
+
         try {
           const result = await this.tools.execute(
-            toolUse.name,
-            toolUse.input as Record<string, unknown>,
+            functionCall.name,
+            JSON.parse(functionCall.arguments),
           );
           actions.push(result.action);
 
@@ -96,41 +122,55 @@ export class AgentCore {
           }
 
           toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
+            role: "tool",
+            tool_call_id: toolCall.id,
             content: JSON.stringify(result.result),
           });
         } catch (error) {
           toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
+            role: "tool",
+            tool_call_id: toolCall.id,
             content: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-            is_error: true,
           });
         }
       }
 
-      messages.push({ role: "assistant", content: response.content });
-      messages.push({ role: "user", content: toolResults });
+      messages.push(
+        choice.message as OpenAI.Chat.ChatCompletionAssistantMessageParam,
+      );
+      messages.push(...toolResults);
 
-      response = await client.messages.create({
-        model: CLAUDE_CONFIG.model,
-        max_tokens: CLAUDE_CONFIG.maxTokens,
-        system: systemPrompt,
-        tools,
-        messages,
+      response = await this.client.chat.completions.create({
+        model: getOpenRouterModel(),
+        max_completion_tokens: CLAUDE_CONFIG.maxTokens,
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
+        tools: openaiTools,
       });
 
-      totalTokens += response.usage.input_tokens + response.usage.output_tokens;
-    }
+      const newChoice = response.choices[0];
+      totalTokens += response.usage?.prompt_tokens || 0;
+      totalTokens += response.usage?.completion_tokens || 0;
 
-    const textBlock = response.content.find(
-      (block): block is Anthropic.TextBlock => block.type === "text",
-    );
+      if (
+        newChoice.finish_reason === "stop" ||
+        newChoice.finish_reason === "length"
+      ) {
+        return {
+          success: true,
+          message: newChoice.message.content || "Done!",
+          actions,
+          metadata: {
+            tokensUsed: totalTokens,
+            processingTimeMs: Date.now() - startTime,
+            skillsExecuted,
+          },
+        };
+      }
+    }
 
     return {
       success: true,
-      message: textBlock?.text ?? "Done!",
+      message: choice.message.content || "Done!",
       actions,
       metadata: {
         tokensUsed: totalTokens,
