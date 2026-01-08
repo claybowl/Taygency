@@ -1,0 +1,175 @@
+{
+  "traceId": "trace-1767908164192-qkr82h",
+  "startTime": "2026-01-08T21:36:04.192Z",
+  "endTime": "2026-01-08T21:36:30.615Z",
+  "logs": [
+    {
+      "id": "log-1767908164192-o13p",
+      "timestamp": "2026-01-08T21:36:04.192Z",
+      "level": "info",
+      "event": {
+        "type": "request_received",
+        "channel": "email",
+        "messagePreview": "We're deploying Vapi this evening, let's make sure we aren't missing anything. Also, don't forget to"
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "log-1767908164432-1cqo",
+      "timestamp": "2026-01-08T21:36:04.432Z",
+      "level": "debug",
+      "event": {
+        "type": "workspace_check",
+        "exists": true,
+        "initialized": false
+      },
+      "durationMs": 240
+    },
+    {
+      "id": "log-1767908167052-7kf1",
+      "timestamp": "2026-01-08T21:36:07.052Z",
+      "level": "info",
+      "event": {
+        "type": "context_built",
+        "taskCount": 27,
+        "hasPreferences": true
+      },
+      "durationMs": 2620
+    },
+    {
+      "id": "log-1767908174320-4fu5",
+      "timestamp": "2026-01-08T21:36:14.320Z",
+      "level": "debug",
+      "event": {
+        "type": "context_built",
+        "taskCount": 10,
+        "hasPreferences": true
+      },
+      "durationMs": 7268
+    },
+    {
+      "id": "log-1767908176004-l37f",
+      "timestamp": "2026-01-08T21:36:16.004Z",
+      "level": "info",
+      "event": {
+        "type": "skills_loaded",
+        "count": 6,
+        "metaSkillCount": 6
+      },
+      "durationMs": 1684
+    },
+    {
+      "id": "log-1767908176005-4kuh",
+      "timestamp": "2026-01-08T21:36:16.005Z",
+      "level": "debug",
+      "event": {
+        "type": "system_prompt_built",
+        "tokenEstimate": 1193
+      },
+      "durationMs": 1
+    },
+    {
+      "id": "log-1767908176006-33d5",
+      "timestamp": "2026-01-08T21:36:16.006Z",
+      "level": "info",
+      "event": {
+        "type": "llm_request_start",
+        "model": "anthropic/claude-sonnet-4",
+        "messageCount": 2
+      },
+      "durationMs": 1
+    },
+    {
+      "id": "log-1767908180180-zvtd",
+      "timestamp": "2026-01-08T21:36:20.180Z",
+      "level": "info",
+      "event": {
+        "type": "llm_request_complete",
+        "promptTokens": 9943,
+        "completionTokens": 162,
+        "finishReason": "tool_calls"
+      },
+      "durationMs": 4174
+    },
+    {
+      "id": "log-1767908180180-cca4",
+      "timestamp": "2026-01-08T21:36:20.181Z",
+      "level": "debug",
+      "event": {
+        "type": "iteration_complete",
+        "iterationNumber": 1,
+        "hasMoreToolCalls": true
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "log-1767908180181-i9ka",
+      "timestamp": "2026-01-08T21:36:20.181Z",
+      "level": "info",
+      "event": {
+        "type": "tool_call_start",
+        "toolName": "create_task",
+        "args": {
+          "title": "Meeting with John at 9am tomorrow",
+          "priority": "high",
+          "due": "2025-01-09T09:00:00-06:00",
+          "category": "Business"
+        }
+      },
+      "durationMs": 1
+    },
+    {
+      "id": "log-1767908181151-q0a9",
+      "timestamp": "2026-01-08T21:36:21.151Z",
+      "level": "info",
+      "event": {
+        "type": "tool_call_complete",
+        "toolName": "create_task",
+        "success": true,
+        "resultPreview": "{\"taskId\":\"task-1767908180181-m7zde\",\"title\":\"Meeting with John at 9am tomorrow\"}"
+      },
+      "durationMs": 970
+    },
+    {
+      "id": "log-1767908181151-tk0k",
+      "timestamp": "2026-01-08T21:36:21.152Z",
+      "level": "info",
+      "event": {
+        "type": "llm_request_start",
+        "model": "anthropic/claude-sonnet-4",
+        "messageCount": 4
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "log-1767908190612-v5n2",
+      "timestamp": "2026-01-08T21:36:30.612Z",
+      "level": "info",
+      "event": {
+        "type": "llm_request_complete",
+        "promptTokens": 10144,
+        "completionTokens": 325,
+        "finishReason": "stop"
+      },
+      "durationMs": 9461
+    },
+    {
+      "id": "log-1767908190612-pla9",
+      "timestamp": "2026-01-08T21:36:30.612Z",
+      "level": "info",
+      "event": {
+        "type": "response_generated",
+        "messageLength": 1285,
+        "actionCount": 1
+      },
+      "durationMs": 0
+    }
+  ],
+  "summary": {
+    "totalDurationMs": 26423,
+    "llmCalls": 2,
+    "toolCalls": 1,
+    "tokensUsed": 20574,
+    "success": true
+  }
+}

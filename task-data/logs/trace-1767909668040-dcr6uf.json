@@ -1,0 +1,113 @@
+{
+  "traceId": "trace-1767909668040-dcr6uf",
+  "startTime": "2026-01-08T22:01:08.041Z",
+  "endTime": "2026-01-08T22:01:15.500Z",
+  "logs": [
+    {
+      "id": "log-1767909668041-dnzs",
+      "timestamp": "2026-01-08T22:01:08.041Z",
+      "level": "info",
+      "event": {
+        "type": "request_received",
+        "channel": "sms",
+        "messagePreview": "any recommendations? Tulsa, OK.\n\n"
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "log-1767909668342-ouz1",
+      "timestamp": "2026-01-08T22:01:08.342Z",
+      "level": "debug",
+      "event": {
+        "type": "workspace_check",
+        "exists": true,
+        "initialized": false
+      },
+      "durationMs": 301
+    },
+    {
+      "id": "log-1767909668832-etw9",
+      "timestamp": "2026-01-08T22:01:08.832Z",
+      "level": "info",
+      "event": {
+        "type": "context_built",
+        "taskCount": 33,
+        "hasPreferences": true
+      },
+      "durationMs": 490
+    },
+    {
+      "id": "log-1767909672426-8e4b",
+      "timestamp": "2026-01-08T22:01:12.426Z",
+      "level": "debug",
+      "event": {
+        "type": "context_built",
+        "taskCount": 2,
+        "hasPreferences": true
+      },
+      "durationMs": 3594
+    },
+    {
+      "id": "log-1767909672662-4zdm",
+      "timestamp": "2026-01-08T22:01:12.662Z",
+      "level": "info",
+      "event": {
+        "type": "skills_loaded",
+        "count": 6,
+        "metaSkillCount": 6
+      },
+      "durationMs": 236
+    },
+    {
+      "id": "log-1767909672663-qf4x",
+      "timestamp": "2026-01-08T22:01:12.663Z",
+      "level": "debug",
+      "event": {
+        "type": "system_prompt_built",
+        "tokenEstimate": 1048
+      },
+      "durationMs": 1
+    },
+    {
+      "id": "log-1767909672663-sa8u",
+      "timestamp": "2026-01-08T22:01:12.663Z",
+      "level": "info",
+      "event": {
+        "type": "llm_request_start",
+        "model": "anthropic/claude-sonnet-4",
+        "messageCount": 2
+      },
+      "durationMs": 0
+    },
+    {
+      "id": "log-1767909675499-7ua4",
+      "timestamp": "2026-01-08T22:01:15.499Z",
+      "level": "info",
+      "event": {
+        "type": "llm_request_complete",
+        "promptTokens": 2155,
+        "completionTokens": 76,
+        "finishReason": "stop"
+      },
+      "durationMs": 2836
+    },
+    {
+      "id": "log-1767909675499-mxse",
+      "timestamp": "2026-01-08T22:01:15.499Z",
+      "level": "info",
+      "event": {
+        "type": "response_generated",
+        "messageLength": 289,
+        "actionCount": 0
+      },
+      "durationMs": 0
+    }
+  ],
+  "summary": {
+    "totalDurationMs": 7459,
+    "llmCalls": 1,
+    "toolCalls": 0,
+    "tokensUsed": 2231,
+    "success": true
+  }
+}
