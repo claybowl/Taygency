@@ -17,6 +17,7 @@
     "@upstash/redis": "^1.28.0",
     "@vibe-planning/shared": "*",
     "d3-force": "^3.0.0",
+    "googleapis": "^170.0.0",
     "gray-matter": "^4.0.3",
     "next": "^14.1.0",
     "openai": "^6.15.0",

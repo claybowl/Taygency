@@ -9,7 +9,19 @@ import type {
   AgentExecutionTrace,
   AgentLogEntry,
   AgentLogEvent,
+  Skill,
+  Tool,
 } from "@vibe-planning/shared";
+import type { SkillsApiResponse, SkillWithMeta } from "../api/skills/route";
+import type { FilesApiResponse, FileTreeNode } from "../api/files/route";
+import type { FileContentResponse } from "../api/files/content/route";
+import type {
+  LogsApiResponse,
+  LogEntry,
+  TraceDetailResponse,
+} from "../api/logs/route";
+import type { ContextApiResponse } from "../api/context/route";
+import { SKILL_GROUPS } from "../../lib/skill-groups";
 
 type PageId =
   | "overview"
@@ -56,6 +68,36 @@ export default function DashboardPage() {
   const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
   const [memoryData, setMemoryData] = useState<MemoryResponse | null>(null);
   const [memoryLoading, setMemoryLoading] = useState(false);
+
+  const [skillsData, setSkillsData] = useState<SkillsApiResponse | null>(null);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<SkillWithMeta | null>(
+    null,
+  );
+
+  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string>("");
+  const [fileContentLoading, setFileContentLoading] = useState(false);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
+    new Set(["tasks", "skills", "context", "meta"]),
+  );
+
+  const [logsData, setLogsData] = useState<LogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [selectedTrace, setSelectedTrace] =
+    useState<AgentExecutionTrace | null>(null);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [logsFilter, setLogsFilter] = useState<"all" | "success" | "error">(
+    "all",
+  );
+
+  const [contextData, setContextData] = useState<ContextApiResponse | null>(
+    null,
+  );
+  const [contextLoading, setContextLoading] = useState(false);
 
   const [activityFeed, setActivityFeed] = useState<
     Array<{
@@ -208,6 +250,134 @@ export default function DashboardPage() {
         .finally(() => setMemoryLoading(false));
     }
   }, [currentPage, memoryData]);
+
+  useEffect(() => {
+    if (currentPage === "skills" && !skillsData) {
+      setSkillsLoading(true);
+      fetch("/api/skills")
+        .then((res) => res.json())
+        .then((data: SkillsApiResponse) => {
+          setSkillsData(data);
+        })
+        .catch((err) => {
+          console.warn("[Dashboard] Skills API error:", err);
+        })
+        .finally(() => setSkillsLoading(false));
+    }
+  }, [currentPage, skillsData]);
+
+  useEffect(() => {
+    if (currentPage === "files" && fileTree.length === 0) {
+      setFilesLoading(true);
+      fetch("/api/files")
+        .then((res) => res.json())
+        .then((data: FilesApiResponse) => {
+          setFileTree(data.tree);
+        })
+        .catch((err) => {
+          console.warn("[Dashboard] Files API error:", err);
+        })
+        .finally(() => setFilesLoading(false));
+    }
+  }, [currentPage, fileTree.length]);
+
+  useEffect(() => {
+    if (selectedFilePath) {
+      setFileContentLoading(true);
+      fetch(`/api/files/content?path=${encodeURIComponent(selectedFilePath)}`)
+        .then((res) => res.json())
+        .then((data: FileContentResponse) => {
+          if (data.error) {
+            setFileContent(`// Error: ${data.error}`);
+          } else {
+            setFileContent(data.content);
+          }
+        })
+        .catch((err) => {
+          console.warn("[Dashboard] File content error:", err);
+          setFileContent("// Failed to load file content");
+        })
+        .finally(() => setFileContentLoading(false));
+    }
+  }, [selectedFilePath]);
+
+  const toggleDir = (path: string) => {
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (currentPage === "logs" && logsData.length === 0) {
+      setLogsLoading(true);
+      fetch("/api/logs")
+        .then((res) => res.json())
+        .then((data: LogsApiResponse) => {
+          setLogsData(data.logs);
+        })
+        .catch((err) => {
+          console.warn("[Dashboard] Logs API error:", err);
+        })
+        .finally(() => setLogsLoading(false));
+    }
+  }, [currentPage, logsData.length]);
+
+  useEffect(() => {
+    if (selectedTraceId) {
+      setTraceLoading(true);
+      fetch(`/api/logs?traceId=${encodeURIComponent(selectedTraceId)}`)
+        .then((res) => res.json())
+        .then((data: TraceDetailResponse) => {
+          setSelectedTrace(data.trace);
+        })
+        .catch((err) => {
+          console.warn("[Dashboard] Trace fetch error:", err);
+          setSelectedTrace(null);
+        })
+        .finally(() => setTraceLoading(false));
+    }
+  }, [selectedTraceId]);
+
+  const refreshLogs = () => {
+    setLogsLoading(true);
+    fetch("/api/logs")
+      .then((res) => res.json())
+      .then((data: LogsApiResponse) => {
+        setLogsData(data.logs);
+      })
+      .catch((err) => {
+        console.warn("[Dashboard] Logs refresh error:", err);
+      })
+      .finally(() => setLogsLoading(false));
+  };
+
+  const filteredLogs = logsData.filter((log) => {
+    if (logsFilter === "all") return true;
+    if (logsFilter === "success") return log.success;
+    if (logsFilter === "error") return !log.success;
+    return true;
+  });
+
+  useEffect(() => {
+    if (currentPage === "context" && !contextData) {
+      setContextLoading(true);
+      fetch("/api/context")
+        .then((res) => res.json())
+        .then((data: ContextApiResponse) => {
+          setContextData(data);
+        })
+        .catch((err) => {
+          console.warn("[Dashboard] Context API error:", err);
+        })
+        .finally(() => setContextLoading(false));
+    }
+  }, [currentPage, contextData]);
 
   const showPage = (pageId: PageId) => {
     setCurrentPage(pageId);
@@ -681,18 +851,93 @@ export default function DashboardPage() {
             <div style={styles.pageHeader}>
               <h1 style={styles.pageTitle}>Skills Library</h1>
               <p style={styles.pageSubtitle}>
-                Available agent capabilities and automation patterns.
+                Agent capabilities organized by function.
               </p>
             </div>
-            <div style={styles.placeholderBox}>
-              <div style={styles.placeholderIcon}>⚡</div>
-              <p style={styles.placeholderText}>
-                Skills management interface coming soon.
-              </p>
-              <p style={styles.placeholderSubtext}>
-                24 skills loaded • 8 meta-skills active
-              </p>
-            </div>
+
+            {skillsLoading ? (
+              <div style={skillsStyles.loadingContainer}>
+                <div style={styles.loadingSpinner} />
+                <p style={styles.loadingText}>Loading skills...</p>
+              </div>
+            ) : skillsData ? (
+              <>
+                <div style={skillsStyles.statsBar}>
+                  <div style={skillsStyles.statItem}>
+                    <span style={skillsStyles.statNumber}>
+                      {skillsData.stats.implemented}
+                    </span>
+                    <span style={skillsStyles.statLabel}>Implemented</span>
+                  </div>
+                  <div style={skillsStyles.statDivider} />
+                  <div style={skillsStyles.statItem}>
+                    <span style={skillsStyles.statNumber}>
+                      {skillsData.stats.comingSoon}
+                    </span>
+                    <span style={skillsStyles.statLabel}>Coming Soon</span>
+                  </div>
+                  <div style={skillsStyles.statDivider} />
+                  <div style={skillsStyles.statItem}>
+                    <span style={skillsStyles.statNumber}>
+                      {skillsData.stats.totalTools}
+                    </span>
+                    <span style={skillsStyles.statLabel}>Total Tools</span>
+                  </div>
+                </div>
+
+                <div style={skillsStyles.groupsContainer}>
+                  {SKILL_GROUPS.map((group) => {
+                    const groupSkills = skillsData.skills.filter(
+                      (s) => s.groupId === group.id,
+                    );
+                    return (
+                      <div key={group.id} style={skillsStyles.skillGroup}>
+                        <div style={skillsStyles.groupHeader}>
+                          <span style={skillsStyles.groupEmoji}>
+                            {group.emoji}
+                          </span>
+                          <span style={skillsStyles.groupName}>
+                            {group.name}
+                          </span>
+                          <span style={skillsStyles.groupCount}>
+                            {
+                              groupSkills.filter(
+                                (s) => s.status === "implemented",
+                              ).length
+                            }{" "}
+                            / {groupSkills.length}
+                          </span>
+                        </div>
+                        <div style={skillsStyles.skillsGrid}>
+                          {groupSkills.map((skill) => (
+                            <SkillCard
+                              key={skill.name}
+                              skill={skill}
+                              onClick={() =>
+                                skill.status === "implemented" &&
+                                setSelectedSkill(skill)
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div style={styles.placeholderBox}>
+                <div style={styles.placeholderIcon}>⚠️</div>
+                <p style={styles.placeholderText}>Failed to load skills</p>
+              </div>
+            )}
+
+            {selectedSkill && (
+              <SkillModal
+                skill={selectedSkill}
+                onClose={() => setSelectedSkill(null)}
+              />
+            )}
           </section>
         )}
 
@@ -702,46 +947,56 @@ export default function DashboardPage() {
             <div style={styles.pageHeader}>
               <h1 style={styles.pageTitle}>File Browser</h1>
               <p style={styles.pageSubtitle}>
-                Inspect the underlying data structure of the planning agent.
+                Browse workspace files from the GitHub repository.
               </p>
             </div>
 
-            <div style={styles.fileBrowser}>
-              <div style={styles.fileTree}>
-                <TreeItem icon="📁" label="tasks" indent={0} />
-                <TreeItem icon="📁" label="skills" indent={0} />
-                <TreeItem icon="📁" label="context" indent={0} />
-                <TreeItem
-                  icon="📄"
-                  label="preferences.md"
-                  indent={1}
-                  onClick={() => setSelectedFile("preferences.md")}
-                  active={selectedFile === "preferences.md"}
-                />
-                <TreeItem
-                  icon="📄"
-                  label="patterns.md"
-                  indent={1}
-                  onClick={() => setSelectedFile("patterns.md")}
-                  active={selectedFile === "patterns.md"}
-                />
-                <TreeItem icon="📁" label="meta" indent={0} />
-                <TreeItem
-                  icon="📄"
-                  label="config.json"
-                  indent={1}
-                  onClick={() => setSelectedFile("config.json")}
-                  active={selectedFile === "config.json"}
-                  highlight
-                />
-                <TreeItem icon="📁" label="inbox" indent={0} />
+            {filesLoading ? (
+              <div style={filesStyles.loadingContainer}>
+                <div style={styles.loadingSpinner} />
+                <p style={styles.loadingText}>Loading files from GitHub...</p>
               </div>
-              <div style={styles.fileContent}>
-                <pre style={styles.fileContentPre}>
-                  {fileContents[selectedFile] || "// Select a file to view"}
-                </pre>
+            ) : (
+              <div style={styles.fileBrowser}>
+                <div style={styles.fileTree}>
+                  {fileTree.length === 0 ? (
+                    <div style={filesStyles.emptyTree}>No files found</div>
+                  ) : (
+                    <FileTreeView
+                      nodes={fileTree}
+                      expandedDirs={expandedDirs}
+                      selectedPath={selectedFilePath}
+                      onToggleDir={toggleDir}
+                      onSelectFile={setSelectedFilePath}
+                      indent={0}
+                    />
+                  )}
+                </div>
+                <div style={styles.fileContent}>
+                  {selectedFilePath ? (
+                    <>
+                      <div style={filesStyles.fileHeader}>
+                        <span style={filesStyles.filePath}>
+                          {selectedFilePath}
+                        </span>
+                      </div>
+                      {fileContentLoading ? (
+                        <div style={filesStyles.contentLoading}>
+                          Loading file content...
+                        </div>
+                      ) : (
+                        <pre style={styles.fileContentPre}>{fileContent}</pre>
+                      )}
+                    </>
+                  ) : (
+                    <div style={filesStyles.noFileSelected}>
+                      <span style={filesStyles.noFileIcon}>📄</span>
+                      <p>Select a file to view its contents</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </section>
         )}
 
@@ -749,20 +1004,125 @@ export default function DashboardPage() {
         {currentPage === "logs" && (
           <section style={styles.pageTransition}>
             <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>System Logs</h1>
+              <h1 style={styles.pageTitle}>Execution Logs</h1>
               <p style={styles.pageSubtitle}>
-                Real-time event stream and debugging information.
+                Agent execution traces and debugging information.
               </p>
             </div>
-            <div style={styles.placeholderBox}>
-              <div style={styles.placeholderIcon}>📋</div>
-              <p style={styles.placeholderText}>
-                Log viewer interface coming soon.
-              </p>
-              <p style={styles.placeholderSubtext}>
-                Streaming logs • Filter by severity • Export
-              </p>
-            </div>
+
+            {logsLoading && logsData.length === 0 ? (
+              <div style={logsPageStyles.loadingContainer}>
+                <div style={styles.loadingSpinner} />
+                <p style={styles.loadingText}>Loading logs...</p>
+              </div>
+            ) : (
+              <div style={logsPageStyles.container}>
+                <div style={logsPageStyles.toolbar}>
+                  <div style={logsPageStyles.filterGroup}>
+                    <button
+                      style={{
+                        ...logsPageStyles.filterBtn,
+                        ...(logsFilter === "all"
+                          ? logsPageStyles.filterBtnActive
+                          : {}),
+                      }}
+                      onClick={() => setLogsFilter("all")}
+                    >
+                      All ({logsData.length})
+                    </button>
+                    <button
+                      style={{
+                        ...logsPageStyles.filterBtn,
+                        ...(logsFilter === "success"
+                          ? logsPageStyles.filterBtnActive
+                          : {}),
+                      }}
+                      onClick={() => setLogsFilter("success")}
+                    >
+                      Success ({logsData.filter((l) => l.success).length})
+                    </button>
+                    <button
+                      style={{
+                        ...logsPageStyles.filterBtn,
+                        ...(logsFilter === "error"
+                          ? logsPageStyles.filterBtnActive
+                          : {}),
+                      }}
+                      onClick={() => setLogsFilter("error")}
+                    >
+                      Errors ({logsData.filter((l) => !l.success).length})
+                    </button>
+                  </div>
+                  <button
+                    style={logsPageStyles.refreshBtn}
+                    onClick={refreshLogs}
+                    disabled={logsLoading}
+                  >
+                    {logsLoading ? "Refreshing..." : "↻ Refresh"}
+                  </button>
+                </div>
+
+                {filteredLogs.length === 0 ? (
+                  <div style={logsPageStyles.emptyState}>
+                    <span style={logsPageStyles.emptyIcon}>📋</span>
+                    <p style={logsPageStyles.emptyText}>
+                      No execution logs yet
+                    </p>
+                    <p style={logsPageStyles.emptySubtext}>
+                      Send a message via the Simulator to create your first log
+                      entry
+                    </p>
+                  </div>
+                ) : (
+                  <div style={logsPageStyles.logsList}>
+                    {filteredLogs.map((log) => (
+                      <LogListItem
+                        key={log.traceId}
+                        log={log}
+                        isSelected={selectedTraceId === log.traceId}
+                        onClick={() =>
+                          setSelectedTraceId(
+                            selectedTraceId === log.traceId
+                              ? null
+                              : log.traceId,
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {selectedTraceId && (
+                  <div style={logsPageStyles.tracePanel}>
+                    <div style={logsPageStyles.tracePanelHeader}>
+                      <span style={logsPageStyles.tracePanelTitle}>
+                        Trace Details
+                      </span>
+                      <button
+                        style={logsPageStyles.closePanelBtn}
+                        onClick={() => {
+                          setSelectedTraceId(null);
+                          setSelectedTrace(null);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {traceLoading ? (
+                      <div style={logsPageStyles.tracePanelLoading}>
+                        Loading trace details...
+                      </div>
+                    ) : selectedTrace ? (
+                      <AgentLogsViewer trace={selectedTrace} />
+                    ) : (
+                      <div style={logsPageStyles.tracePanelError}>
+                        Failed to load trace details
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         )}
 
@@ -772,18 +1132,315 @@ export default function DashboardPage() {
             <div style={styles.pageHeader}>
               <h1 style={styles.pageTitle}>Context Memory</h1>
               <p style={styles.pageSubtitle}>
-                Learned patterns and user preferences.
+                Learned patterns, preferences, and schedule information.
               </p>
             </div>
-            <div style={styles.placeholderBox}>
-              <div style={styles.placeholderIcon}>🧠</div>
-              <p style={styles.placeholderText}>
-                Context explorer interface coming soon.
-              </p>
-              <p style={styles.placeholderSubtext}>
-                Preferences • Patterns • History
-              </p>
-            </div>
+
+            {contextLoading ? (
+              <div style={contextStyles.loadingContainer}>
+                <div style={styles.loadingSpinner} />
+                <p style={styles.loadingText}>Loading context data...</p>
+              </div>
+            ) : contextData ? (
+              <div style={contextStyles.container}>
+                <div style={contextStyles.statsBar}>
+                  <div style={contextStyles.statItem}>
+                    <span style={contextStyles.statNumber}>
+                      {contextData.files.length}
+                    </span>
+                    <span style={contextStyles.statLabel}>Context Files</span>
+                  </div>
+                </div>
+
+                <div style={contextStyles.grid}>
+                  {/* Preferences Card */}
+                  {contextData.preferences && (
+                    <div style={contextStyles.card}>
+                      <div style={contextStyles.cardHeader}>
+                        <span style={contextStyles.cardIcon}>⚙️</span>
+                        <h3 style={contextStyles.cardTitle}>Preferences</h3>
+                      </div>
+                      <div style={contextStyles.cardContent}>
+                        <div style={contextStyles.section}>
+                          <h4 style={contextStyles.sectionTitle}>
+                            Communication
+                          </h4>
+                          <div style={contextStyles.kvList}>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>
+                                Response Length
+                              </span>
+                              <span style={contextStyles.kvValue}>
+                                {
+                                  contextData.preferences.communication
+                                    .responseLength
+                                }
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>Tone</span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.communication.tone}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>Greetings</span>
+                              <span style={contextStyles.kvValue}>
+                                {
+                                  contextData.preferences.communication
+                                    .greetings
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div style={contextStyles.section}>
+                          <h4 style={contextStyles.sectionTitle}>
+                            Task Management
+                          </h4>
+                          <div style={contextStyles.kvList}>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>
+                                Daily MIT Count
+                              </span>
+                              <span style={contextStyles.kvValue}>
+                                {
+                                  contextData.preferences.taskManagement
+                                    .dailyMitCount
+                                }
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>
+                                Show Categories
+                              </span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.taskManagement
+                                  .showCategories
+                                  ? "Yes"
+                                  : "No"}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>
+                                Energy Levels
+                              </span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.taskManagement
+                                  .includeEnergyLevels
+                                  ? "Enabled"
+                                  : "Disabled"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div style={contextStyles.section}>
+                          <h4 style={contextStyles.sectionTitle}>Temporal</h4>
+                          <div style={contextStyles.kvList}>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>Timezone</span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.temporal.timezone}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>
+                                Peak Hours
+                              </span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.temporal.peakHours.join(
+                                  ", ",
+                                ) || "Not set"}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>
+                                Planning Time
+                              </span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.temporal.planningTime}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>Busy Days</span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.preferences.temporal.busyDays.join(
+                                  ", ",
+                                ) || "None"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Patterns Card */}
+                  {contextData.patterns && (
+                    <div style={contextStyles.card}>
+                      <div style={contextStyles.cardHeader}>
+                        <span style={contextStyles.cardIcon}>📊</span>
+                        <h3 style={contextStyles.cardTitle}>Usage Patterns</h3>
+                      </div>
+                      <div style={contextStyles.cardContent}>
+                        <div style={contextStyles.section}>
+                          <h4 style={contextStyles.sectionTitle}>
+                            Interaction Times
+                          </h4>
+                          <div style={contextStyles.barChart}>
+                            <ContextBar
+                              label="Morning"
+                              value={
+                                contextData.patterns.interactions.morningCount
+                              }
+                              max={Math.max(
+                                contextData.patterns.interactions.morningCount,
+                                contextData.patterns.interactions
+                                  .afternoonCount,
+                                contextData.patterns.interactions.eveningCount,
+                                1,
+                              )}
+                            />
+                            <ContextBar
+                              label="Afternoon"
+                              value={
+                                contextData.patterns.interactions.afternoonCount
+                              }
+                              max={Math.max(
+                                contextData.patterns.interactions.morningCount,
+                                contextData.patterns.interactions
+                                  .afternoonCount,
+                                contextData.patterns.interactions.eveningCount,
+                                1,
+                              )}
+                            />
+                            <ContextBar
+                              label="Evening"
+                              value={
+                                contextData.patterns.interactions.eveningCount
+                              }
+                              max={Math.max(
+                                contextData.patterns.interactions.morningCount,
+                                contextData.patterns.interactions
+                                  .afternoonCount,
+                                contextData.patterns.interactions.eveningCount,
+                                1,
+                              )}
+                            />
+                          </div>
+                        </div>
+                        <div style={contextStyles.section}>
+                          <h4 style={contextStyles.sectionTitle}>
+                            Channel Usage
+                          </h4>
+                          <div style={contextStyles.channelStats}>
+                            <div style={contextStyles.channelItem}>
+                              <span style={contextStyles.channelIcon}>📧</span>
+                              <span style={contextStyles.channelLabel}>
+                                Email
+                              </span>
+                              <span style={contextStyles.channelCount}>
+                                {contextData.patterns.channels.emailCount}
+                              </span>
+                            </div>
+                            <div style={contextStyles.channelItem}>
+                              <span style={contextStyles.channelIcon}>💬</span>
+                              <span style={contextStyles.channelLabel}>
+                                SMS
+                              </span>
+                              <span style={contextStyles.channelCount}>
+                                {contextData.patterns.channels.smsCount}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Schedule Card */}
+                  {contextData.schedule && (
+                    <div style={contextStyles.card}>
+                      <div style={contextStyles.cardHeader}>
+                        <span style={contextStyles.cardIcon}>📅</span>
+                        <h3 style={contextStyles.cardTitle}>Schedule</h3>
+                      </div>
+                      <div style={contextStyles.cardContent}>
+                        <div style={contextStyles.section}>
+                          <h4 style={contextStyles.sectionTitle}>Work Hours</h4>
+                          <div style={contextStyles.kvList}>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>Start</span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.schedule.workHours.start}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>End</span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.schedule.workHours.end}
+                              </span>
+                            </div>
+                            <div style={contextStyles.kvItem}>
+                              <span style={contextStyles.kvKey}>Days</span>
+                              <span style={contextStyles.kvValue}>
+                                {contextData.schedule.workHours.days.join(
+                                  ", ",
+                                ) || "Not set"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Commitments Card */}
+                  {contextData.commitments && (
+                    <div style={contextStyles.card}>
+                      <div style={contextStyles.cardHeader}>
+                        <span style={contextStyles.cardIcon}>📌</span>
+                        <h3 style={contextStyles.cardTitle}>
+                          Upcoming Commitments
+                        </h3>
+                      </div>
+                      <div style={contextStyles.cardContent}>
+                        <pre style={contextStyles.rawContent}>
+                          {contextData.commitments}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Raw Files Section */}
+                <div style={contextStyles.rawFilesSection}>
+                  <h3 style={contextStyles.rawFilesTitle}>Raw Context Files</h3>
+                  <div style={contextStyles.rawFilesGrid}>
+                    {contextData.files.map((file) => (
+                      <div key={file.path} style={contextStyles.rawFileCard}>
+                        <div style={contextStyles.rawFileHeader}>
+                          <span style={contextStyles.rawFileIcon}>📄</span>
+                          <span style={contextStyles.rawFileName}>
+                            {file.name}
+                          </span>
+                        </div>
+                        <pre style={contextStyles.rawFileContent}>
+                          {file.content}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={styles.placeholderBox}>
+                <div style={styles.placeholderIcon}>⚠️</div>
+                <p style={styles.placeholderText}>
+                  Failed to load context data
+                </p>
+              </div>
+            )}
           </section>
         )}
 
@@ -1111,6 +1768,693 @@ function TreeItem({
   );
 }
 
+function FileTreeView({
+  nodes,
+  expandedDirs,
+  selectedPath,
+  onToggleDir,
+  onSelectFile,
+  indent,
+}: {
+  nodes: FileTreeNode[];
+  expandedDirs: Set<string>;
+  selectedPath: string | null;
+  onToggleDir: (path: string) => void;
+  onSelectFile: (path: string) => void;
+  indent: number;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        if (node.type === "dir") {
+          const isExpanded = expandedDirs.has(node.path);
+          return (
+            <div key={node.path}>
+              <FileTreeItem
+                icon={isExpanded ? "📂" : "📁"}
+                label={node.name}
+                indent={indent}
+                onClick={() => onToggleDir(node.path)}
+                isDir
+                isExpanded={isExpanded}
+              />
+              {isExpanded && node.children && node.children.length > 0 && (
+                <FileTreeView
+                  nodes={node.children}
+                  expandedDirs={expandedDirs}
+                  selectedPath={selectedPath}
+                  onToggleDir={onToggleDir}
+                  onSelectFile={onSelectFile}
+                  indent={indent + 1}
+                />
+              )}
+            </div>
+          );
+        } else {
+          return (
+            <FileTreeItem
+              key={node.path}
+              icon={getFileIcon(node.name)}
+              label={node.name}
+              indent={indent}
+              onClick={() => onSelectFile(node.path)}
+              active={selectedPath === node.path}
+            />
+          );
+        }
+      })}
+    </>
+  );
+}
+
+function FileTreeItem({
+  icon,
+  label,
+  indent,
+  onClick,
+  active,
+  isDir,
+  isExpanded,
+}: {
+  icon: string;
+  label: string;
+  indent: number;
+  onClick?: () => void;
+  active?: boolean;
+  isDir?: boolean;
+  isExpanded?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      style={{
+        ...filesStyles.treeItem,
+        paddingLeft: `${indent * 16 + 8}px`,
+        ...(active ? filesStyles.treeItemActive : {}),
+        ...(hovered && !active ? filesStyles.treeItemHover : {}),
+      }}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={filesStyles.treeIcon}>{icon}</span>
+      <span style={filesStyles.treeLabel}>{label}</span>
+      {isDir && (
+        <span style={filesStyles.expandIcon}>{isExpanded ? "▼" : "▶"}</span>
+      )}
+    </div>
+  );
+}
+
+function getFileIcon(filename: string): string {
+  if (filename.endsWith(".json")) return "📋";
+  if (filename.endsWith(".md")) return "📝";
+  if (filename.endsWith(".txt")) return "📄";
+  return "📄";
+}
+
+const filesStyles: Record<string, CSSProperties> = {
+  loadingContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4rem",
+    gap: "1rem",
+  },
+  emptyTree: {
+    padding: "1rem",
+    color: COLORS.muted,
+    fontStyle: "italic",
+  },
+  treeItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 8px",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    fontSize: "0.9rem",
+    borderLeft: "2px solid transparent",
+  },
+  treeItemActive: {
+    background: "rgba(99, 102, 241, 0.1)",
+    borderLeftColor: COLORS.accent,
+    color: COLORS.accent,
+  },
+  treeItemHover: {
+    background: "rgba(0, 0, 0, 0.03)",
+  },
+  treeIcon: {
+    fontSize: "1rem",
+    flexShrink: 0,
+  },
+  treeLabel: {
+    flex: 1,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  expandIcon: {
+    fontSize: "0.6rem",
+    color: COLORS.muted,
+    marginLeft: "auto",
+  },
+  fileHeader: {
+    padding: "0.75rem 1rem",
+    borderBottom: `1px solid ${COLORS.border}`,
+    background: COLORS.bg,
+  },
+  filePath: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "0.8rem",
+    color: COLORS.muted,
+  },
+  contentLoading: {
+    padding: "2rem",
+    color: COLORS.muted,
+    fontStyle: "italic",
+    textAlign: "center",
+  },
+  noFileSelected: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    gap: "1rem",
+    color: COLORS.muted,
+  },
+  noFileIcon: {
+    fontSize: "3rem",
+    opacity: 0.5,
+  },
+};
+
+function LogListItem({
+  log,
+  isSelected,
+  onClick,
+}: {
+  log: LogEntry;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  };
+
+  const channelIcons: Record<string, string> = {
+    email: "📧",
+    sms: "💬",
+    unknown: "❓",
+  };
+
+  return (
+    <div
+      style={{
+        ...logsPageStyles.logItem,
+        ...(isSelected ? logsPageStyles.logItemSelected : {}),
+        ...(isHovered && !isSelected ? logsPageStyles.logItemHover : {}),
+      }}
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div style={logsPageStyles.logItemHeader}>
+        <span style={logsPageStyles.logChannel}>
+          {channelIcons[log.channel] || channelIcons.unknown} {log.channel}
+        </span>
+        <span
+          style={{
+            ...logsPageStyles.logStatus,
+            color: log.success ? COLORS.success : COLORS.danger,
+          }}
+        >
+          {log.success ? "✓ Success" : "✗ Error"}
+        </span>
+      </div>
+      <p style={logsPageStyles.logPreview}>
+        {log.messagePreview || "(no message)"}
+      </p>
+      <div style={logsPageStyles.logMeta}>
+        <span>{formatTime(log.timestamp)}</span>
+        <span style={logsPageStyles.logMetaDot}>•</span>
+        <span>{log.durationMs}ms</span>
+        {log.llmCalls > 0 && (
+          <>
+            <span style={logsPageStyles.logMetaDot}>•</span>
+            <span>{log.llmCalls} LLM</span>
+          </>
+        )}
+        {log.toolCalls > 0 && (
+          <>
+            <span style={logsPageStyles.logMetaDot}>•</span>
+            <span>{log.toolCalls} tools</span>
+          </>
+        )}
+        {log.tokensUsed > 0 && (
+          <>
+            <span style={logsPageStyles.logMetaDot}>•</span>
+            <span>{log.tokensUsed.toLocaleString()} tokens</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ContextBar({
+  label,
+  value,
+  max,
+}: {
+  label: string;
+  value: number;
+  max: number;
+}) {
+  const percentage = max > 0 ? (value / max) * 100 : 0;
+  return (
+    <div style={contextStyles.barItem}>
+      <span style={contextStyles.barLabel}>{label}</span>
+      <div style={contextStyles.barTrack}>
+        <div
+          style={{
+            ...contextStyles.barFill,
+            width: `${percentage}%`,
+          }}
+        />
+      </div>
+      <span style={contextStyles.barValue}>{value}</span>
+    </div>
+  );
+}
+
+const contextStyles: Record<string, CSSProperties> = {
+  loadingContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4rem",
+    gap: "1rem",
+  },
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2rem",
+  },
+  statsBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: "2rem",
+    padding: "1rem 1.5rem",
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+  },
+  statItem: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  statNumber: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "1.5rem",
+    fontWeight: 600,
+    color: COLORS.accent,
+  },
+  statLabel: {
+    fontSize: "0.75rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: COLORS.muted,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))",
+    gap: "1.5rem",
+  },
+  card: {
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    overflow: "hidden",
+  },
+  cardHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "1rem 1.25rem",
+    borderBottom: `1px solid ${COLORS.border}`,
+    background: COLORS.bg,
+  },
+  cardIcon: {
+    fontSize: "1.25rem",
+  },
+  cardTitle: {
+    fontSize: "1rem",
+    fontWeight: 600,
+    margin: 0,
+  },
+  cardContent: {
+    padding: "1.25rem",
+  },
+  section: {
+    marginBottom: "1.25rem",
+  },
+  sectionTitle: {
+    fontSize: "0.7rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.1em",
+    color: COLORS.muted,
+    marginBottom: "0.75rem",
+    margin: "0 0 0.75rem 0",
+  },
+  kvList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.5rem",
+  },
+  kvItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "0.5rem 0",
+    borderBottom: `1px solid ${COLORS.border}`,
+  },
+  kvKey: {
+    fontSize: "0.85rem",
+    color: COLORS.muted,
+  },
+  kvValue: {
+    fontSize: "0.85rem",
+    fontWeight: 500,
+    color: COLORS.text,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  barChart: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.75rem",
+  },
+  barItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+  },
+  barLabel: {
+    width: "70px",
+    fontSize: "0.8rem",
+    color: COLORS.muted,
+  },
+  barTrack: {
+    flex: 1,
+    height: "8px",
+    background: COLORS.bg,
+    border: `1px solid ${COLORS.border}`,
+    overflow: "hidden",
+  },
+  barFill: {
+    height: "100%",
+    background: COLORS.accent,
+    transition: "width 0.3s ease",
+  },
+  barValue: {
+    width: "30px",
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    textAlign: "right",
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  channelStats: {
+    display: "flex",
+    gap: "1rem",
+  },
+  channelItem: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    padding: "0.75rem",
+    background: COLORS.bg,
+    border: `1px solid ${COLORS.border}`,
+  },
+  channelIcon: {
+    fontSize: "1.25rem",
+  },
+  channelLabel: {
+    flex: 1,
+    fontSize: "0.85rem",
+    color: COLORS.text,
+  },
+  channelCount: {
+    fontSize: "1rem",
+    fontWeight: 600,
+    fontFamily: "'JetBrains Mono', monospace",
+    color: COLORS.accent,
+  },
+  rawContent: {
+    margin: 0,
+    padding: "1rem",
+    background: COLORS.bg,
+    border: `1px solid ${COLORS.border}`,
+    fontSize: "0.8rem",
+    fontFamily: "'JetBrains Mono', monospace",
+    whiteSpace: "pre-wrap",
+    overflow: "auto",
+    maxHeight: "200px",
+    color: COLORS.text,
+  },
+  rawFilesSection: {
+    marginTop: "1rem",
+  },
+  rawFilesTitle: {
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.1em",
+    color: COLORS.muted,
+    marginBottom: "1rem",
+    margin: "0 0 1rem 0",
+  },
+  rawFilesGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+    gap: "1rem",
+  },
+  rawFileCard: {
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    overflow: "hidden",
+  },
+  rawFileHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    padding: "0.75rem 1rem",
+    borderBottom: `1px solid ${COLORS.border}`,
+    background: COLORS.bg,
+  },
+  rawFileIcon: {
+    fontSize: "1rem",
+  },
+  rawFileName: {
+    fontSize: "0.85rem",
+    fontWeight: 500,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  rawFileContent: {
+    margin: 0,
+    padding: "1rem",
+    fontSize: "0.75rem",
+    fontFamily: "'JetBrains Mono', monospace",
+    whiteSpace: "pre-wrap",
+    overflow: "auto",
+    maxHeight: "250px",
+    color: COLORS.text,
+    lineHeight: 1.5,
+  },
+};
+
+const logsPageStyles: Record<string, CSSProperties> = {
+  loadingContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4rem",
+    gap: "1rem",
+  },
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "1rem",
+  },
+  toolbar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "0.75rem 1rem",
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+  },
+  filterGroup: {
+    display: "flex",
+    gap: "0.5rem",
+  },
+  filterBtn: {
+    padding: "0.5rem 1rem",
+    border: `1px solid ${COLORS.border}`,
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: "0.85rem",
+    fontFamily: "'Inter', sans-serif",
+    transition: "all 0.15s ease",
+  },
+  filterBtnActive: {
+    background: COLORS.text,
+    color: "white",
+    borderColor: COLORS.text,
+  },
+  refreshBtn: {
+    padding: "0.5rem 1rem",
+    border: `1px solid ${COLORS.border}`,
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: "0.85rem",
+    fontFamily: "'Inter', sans-serif",
+    transition: "all 0.15s ease",
+  },
+  emptyState: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4rem 2rem",
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    gap: "0.75rem",
+  },
+  emptyIcon: {
+    fontSize: "3rem",
+    opacity: 0.5,
+  },
+  emptyText: {
+    fontSize: "1.1rem",
+    fontWeight: 500,
+    color: COLORS.text,
+  },
+  emptySubtext: {
+    fontSize: "0.9rem",
+    color: COLORS.muted,
+  },
+  logsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.5rem",
+  },
+  logItem: {
+    padding: "1rem 1.25rem",
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  },
+  logItemSelected: {
+    borderColor: COLORS.accent,
+    background: "rgba(99, 102, 241, 0.05)",
+  },
+  logItemHover: {
+    borderColor: COLORS.muted,
+  },
+  logItemHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "0.5rem",
+  },
+  logChannel: {
+    fontWeight: 600,
+    fontSize: "0.9rem",
+    textTransform: "uppercase",
+  },
+  logStatus: {
+    fontSize: "0.8rem",
+    fontWeight: 600,
+  },
+  logPreview: {
+    fontSize: "0.95rem",
+    color: COLORS.text,
+    margin: "0 0 0.5rem 0",
+    lineHeight: 1.4,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  logMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    fontSize: "0.8rem",
+    color: COLORS.muted,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  logMetaDot: {
+    color: COLORS.border,
+  },
+  tracePanel: {
+    marginTop: "1rem",
+    border: `1px solid ${COLORS.border}`,
+    background: "#0d1117",
+    overflow: "hidden",
+  },
+  tracePanelHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "0.75rem 1rem",
+    background: "#161b22",
+    borderBottom: "1px solid #30363d",
+  },
+  tracePanelTitle: {
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    color: "#c9d1d9",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  },
+  closePanelBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#8b949e",
+    fontSize: "1rem",
+    cursor: "pointer",
+    padding: "0.25rem",
+  },
+  tracePanelLoading: {
+    padding: "2rem",
+    textAlign: "center",
+    color: "#8b949e",
+    fontStyle: "italic",
+  },
+  tracePanelError: {
+    padding: "2rem",
+    textAlign: "center",
+    color: "#f87171",
+  },
+};
+
 const NODE_TYPE_COLORS: Record<string, string> = {
   Person: "#3b82f6",
   Task: "#22c55e",
@@ -1120,7 +2464,6 @@ const NODE_TYPE_COLORS: Record<string, string> = {
   default: "#6b7280",
 };
 
-// Memory Page Component - Immersive Knowledge Graph Experience
 function MemoryPage({
   memoryLoading,
   memoryData,
@@ -1660,6 +3003,8 @@ function KnowledgeGraph({
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
+  // Use refs for transform to avoid React re-renders during drag
+  const transformRef = useRef({ x: 0, y: 0, k: 1 });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -1737,11 +3082,15 @@ function KnowledgeGraph({
       .alphaDecay(0.02)
       .velocityDecay(0.4);
 
-    // Update positions on each tick
+    // Update positions on each tick - batch updates for performance
+    let tickCount = 0;
+    const BATCH_SIZE = 2;
+
     simulation.on("tick", () => {
-      const newPositions = new Map<string, { x: number; y: number }>();
+      tickCount++;
+      const needsUpdate = tickCount % BATCH_SIZE === 0;
+
       simNodes.forEach((node) => {
-        // Clamp positions to bounds
         const x = Math.max(
           80,
           Math.min(VIEW_WIDTH - 80, node.x ?? VIEW_WIDTH / 2),
@@ -1752,9 +3101,15 @@ function KnowledgeGraph({
         );
         node.x = x;
         node.y = y;
-        newPositions.set(node.id, { x, y });
       });
-      setPositions(newPositions);
+
+      if (needsUpdate) {
+        const newPositions = new Map<string, { x: number; y: number }>();
+        simNodes.forEach((node) => {
+          newPositions.set(node.id, { x: node.x!, y: node.y! });
+        });
+        setPositions(newPositions);
+      }
     });
 
     simulationRef.current = simulation;
@@ -1788,8 +3143,9 @@ function KnowledgeGraph({
   };
 
   const handlePanStart = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (draggedNode) return;
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    // Pan with right mouse button
+    if (e.button === 2) {
+      e.preventDefault();
       setIsPanning(true);
       panStartRef.current = {
         x: e.clientX,
@@ -1802,12 +3158,14 @@ function KnowledgeGraph({
 
   const handlePanMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (isPanning) {
+      e.preventDefault();
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
-      setPan({
+      const newPan = {
         x: panStartRef.current.panX + dx,
         y: panStartRef.current.panY + dy,
-      });
+      };
+      setPan(newPan);
     }
   };
 
@@ -1818,6 +3176,7 @@ function KnowledgeGraph({
   const resetView = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    transformRef.current = { x: 0, y: 0, k: 1 };
   };
 
   const handleNodeMouseDown = (
@@ -1830,10 +3189,19 @@ function KnowledgeGraph({
     const pos = positions.get(nodeId);
     if (!pos) return;
 
-    const svgPoint = getSVGPoint(e);
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const rect = svg.getBoundingClientRect();
+    const scaleX = VIEW_WIDTH / rect.width / zoom;
+    const scaleY = VIEW_HEIGHT / rect.height / zoom;
+
+    const svgX = (e.clientX - rect.left) * scaleX - pan.x / zoom;
+    const svgY = (e.clientY - rect.top) * scaleY - pan.y / zoom;
+
     dragOffsetRef.current = {
-      x: pos.x - svgPoint.x,
-      y: pos.y - svgPoint.y,
+      x: pos.x - svgX,
+      y: pos.y - svgY,
     };
 
     setDraggedNode(nodeId);
@@ -1842,21 +3210,60 @@ function KnowledgeGraph({
     if (simNode && simulationRef.current) {
       simNode.fx = pos.x;
       simNode.fy = pos.y;
-      simulationRef.current.alphaTarget(0.3).restart();
+
+      // Heat up simulation and strengthen links for immediate feedback
+      simulationRef.current.alpha(1).restart();
+      const linkForce = simulationRef.current.force("link") as d3.ForceLink<
+        SimNode,
+        SimLink
+      >;
+      if (linkForce) {
+        linkForce.strength(0.8); // Stronger links during drag
+      }
     }
+
+    // Also fix connected nodes for immediate edge following
+    const connectedNodeIds = edges
+      .filter((edge) => edge.source === nodeId || edge.target === nodeId)
+      .map((edge) => (edge.source === nodeId ? edge.target : edge.source));
+
+    connectedNodeIds.forEach((connectedId) => {
+      const connectedPos = positions.get(connectedId);
+      if (connectedPos) {
+        const connectedSimNode = simNodesRef.current.find(
+          (n) => n.id === connectedId,
+        );
+        if (connectedSimNode) {
+          // Pull connected nodes slightly towards dragged node
+          const dx = pos.x - connectedPos.x;
+          const dy = pos.y - connectedPos.y;
+          connectedSimNode.fx = connectedPos.x + dx * 0.3;
+          connectedSimNode.fy = connectedPos.y + dy * 0.3;
+        }
+      }
+    });
   };
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!draggedNode) return;
 
-    const svgPoint = getSVGPoint(e);
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const rect = svg.getBoundingClientRect();
+    const scaleX = VIEW_WIDTH / rect.width / zoom;
+    const scaleY = VIEW_HEIGHT / rect.height / zoom;
+
+    const svgX = (e.clientX - rect.left) * scaleX - pan.x / zoom;
+    const svgY = (e.clientY - rect.top) * scaleY - pan.y / zoom;
+
     const newX = Math.max(
       80,
-      Math.min(VIEW_WIDTH - 80, svgPoint.x + dragOffsetRef.current.x),
+      Math.min(VIEW_WIDTH - 80, svgX + dragOffsetRef.current.x),
     );
     const newY = Math.max(
       80,
-      Math.min(VIEW_HEIGHT - 80, svgPoint.y + dragOffsetRef.current.y),
+      Math.min(VIEW_HEIGHT - 80, svgY + dragOffsetRef.current.y),
     );
 
     const simNode = simNodesRef.current.find((n) => n.id === draggedNode);
@@ -1866,6 +3273,25 @@ function KnowledgeGraph({
       simNode.x = newX;
       simNode.y = newY;
     }
+
+    // Update all fixed connected nodes to follow
+    const connectedNodeIds = edges
+      .filter(
+        (edge) => edge.source === draggedNode || edge.target === draggedNode,
+      )
+      .map((edge) => (edge.source === draggedNode ? edge.target : edge.source));
+
+    connectedNodeIds.forEach((connectedId) => {
+      const connectedSimNode = simNodesRef.current.find(
+        (n) => n.id === connectedId,
+      );
+      if (connectedSimNode && connectedSimNode.fx !== undefined) {
+        const dx = newX - (simNode?.x || newX);
+        const dy = newY - (simNode?.y || newY);
+        connectedSimNode.fx = (connectedSimNode.fx || 0) + dx * 0.3;
+        connectedSimNode.fy = (connectedSimNode.fy || 0) + dy * 0.3;
+      }
+    });
 
     setPositions((prev) => {
       const newPositions = new Map(prev);
@@ -1881,7 +3307,24 @@ function KnowledgeGraph({
         simNode.fx = null;
         simNode.fy = null;
         simulationRef.current.alphaTarget(0);
+
+        // Reset link strength
+        const linkForce = simulationRef.current.force("link") as d3.ForceLink<
+          SimNode,
+          SimLink
+        >;
+        if (linkForce) {
+          linkForce.strength(0.5);
+        }
       }
+
+      // Release all connected nodes
+      simNodesRef.current.forEach((node) => {
+        if (node.id !== draggedNode && node.fx !== undefined) {
+          node.fx = null;
+          node.fy = null;
+        }
+      });
     }
     setDraggedNode(null);
   };
@@ -1943,14 +3386,11 @@ function KnowledgeGraph({
         style={{
           display: "block",
           cursor: isPanning ? "grabbing" : draggedNode ? "grabbing" : "grab",
-          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-          transformOrigin: "center center",
-          transition:
-            isPanning || draggedNode ? "none" : "transform 0.1s ease-out",
+          overflow: "hidden",
         }}
         onMouseMove={(e) => {
-          handleMouseMove(e);
-          handlePanMove(e);
+          if (isPanning) handlePanMove(e);
+          if (draggedNode) handleMouseMove(e);
         }}
         onMouseUp={() => {
           handleMouseUp();
@@ -1961,240 +3401,268 @@ function KnowledgeGraph({
           handlePanEnd();
         }}
         onMouseDown={handlePanStart}
+        onContextMenu={(e) => e.preventDefault()}
         onClick={handleBackgroundClick}
         onWheel={handleWheel}
       >
-        <defs>
-          <linearGradient id="etherealGrad">
-            <stop offset="0%" stopColor="#00ffff" />
-            <stop offset="100%" stopColor="#ff00ff" />
-          </linearGradient>
-          <linearGradient id="etherealGradAlt">
-            <stop offset="0%" stopColor="#ff00ff" />
-            <stop offset="100%" stopColor="#00ffff" />
-          </linearGradient>
-          <filter id="nodeBlur" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="1" />
-          </filter>
-          <filter id="nodeGlow" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter
-            id="strongGlow"
-            x="-100%"
-            y="-100%"
-            width="300%"
-            height="300%"
-          >
-            <feGaussianBlur stdDeviation="10" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <radialGradient id="bgGlow1" cx="30%" cy="30%" r="50%">
-            <stop offset="0%" stopColor="#0f172a" />
-            <stop offset="100%" stopColor="#000" />
-          </radialGradient>
-          <radialGradient id="bgGlow2" cx="70%" cy="70%" r="40%">
-            <stop offset="0%" stopColor="rgba(100, 200, 255, 0.03)" />
-            <stop offset="100%" stopColor="transparent" />
-          </radialGradient>
-          <radialGradient id="bgGlow3" cx="20%" cy="80%" r="35%">
-            <stop offset="0%" stopColor="rgba(255, 100, 255, 0.02)" />
-            <stop offset="100%" stopColor="transparent" />
-          </radialGradient>
-        </defs>
-
-        <rect width="100%" height="100%" fill="url(#bgGlow1)" />
-        <rect width="100%" height="100%" fill="url(#bgGlow2)" />
-        <rect width="100%" height="100%" fill="url(#bgGlow3)" />
-
-        {edges.map((edge) => {
-          const sourcePos = positions.get(edge.source);
-          const targetPos = positions.get(edge.target);
-          if (!sourcePos || !targetPos) return null;
-
-          const isHighlighted =
-            hoveredEdge === edge.id ||
-            activeNode === edge.source ||
-            activeNode === edge.target;
-
-          const isDraggingConnected =
-            draggedNode &&
-            (edge.source === draggedNode || edge.target === draggedNode);
-
-          const midX = (sourcePos.x + targetPos.x) / 2;
-          const midY = (sourcePos.y + targetPos.y) / 2;
-          const curveOffset = 20 + Math.random() * 10;
-          const ctrlX = midX + curveOffset;
-          const ctrlY = midY - curveOffset;
-
-          return (
-            <g key={edge.id}>
-              <path
-                d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
-                fill="none"
-                stroke="transparent"
-                strokeWidth={20}
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHoveredEdge(edge.id)}
-                onMouseLeave={() => setHoveredEdge(null)}
-              />
-              <path
-                d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
-                fill="none"
-                stroke={isHighlighted ? "#fff" : "url(#etherealGrad)"}
-                strokeWidth={isHighlighted ? 2 : 1}
-                strokeOpacity={isHighlighted ? 0.6 : 0.2}
-                strokeLinecap="round"
-                filter={isHighlighted ? "url(#nodeGlow)" : undefined}
-                style={{
-                  transition: "all 0.3s ease",
-                  pointerEvents: "none",
-                }}
-              />
-              {isHighlighted && !isDraggingConnected && (
-                <g style={{ pointerEvents: "none" }}>
-                  <rect
-                    x={ctrlX - 120}
-                    y={ctrlY - 28}
-                    width={240}
-                    height={36}
-                    rx={4}
-                    fill="rgba(0, 0, 0, 0.85)"
-                    stroke="rgba(100, 200, 255, 0.3)"
-                    strokeWidth={1}
-                  />
-                  <text
-                    x={ctrlX}
-                    y={ctrlY - 6}
-                    textAnchor="middle"
-                    fill="rgba(255, 255, 255, 0.8)"
-                    fontSize="12"
-                    fontFamily="Georgia, serif"
-                    fontStyle="italic"
-                  >
-                    {edge.fact.length > 45
-                      ? edge.fact.slice(0, 45) + "..."
-                      : edge.fact}
-                  </text>
-                </g>
-              )}
-            </g>
-          );
-        })}
-
-        {nodes.map((node, index) => {
-          const pos = positions.get(node.id);
-          if (!pos) return null;
-
-          const isHovered = hoveredNode === node.id;
-          const isSelected = selectedNode === node.id;
-          const isDragging = draggedNode === node.id;
-          const isConnected = connectedNodes?.has(node.id);
-          const isDimmed =
-            activeNode &&
-            !isConnected &&
-            !isHovered &&
-            !isSelected &&
-            !isDragging;
-
-          const baseRadius = 8 + (index % 5) * 4;
-          const radius =
-            isHovered || isSelected || isDragging
-              ? baseRadius * 1.3
-              : baseRadius;
-
-          return (
-            <g
-              key={node.id}
-              style={{
-                cursor: isDragging ? "grabbing" : "grab",
-                opacity: isDimmed ? 0.3 : 1,
-                transition: isDragging ? "none" : "opacity 0.3s ease",
-              }}
-              onMouseEnter={() => !draggedNode && setHoveredNode(node.id)}
-              onMouseLeave={() => !draggedNode && setHoveredNode(null)}
-              onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
-              onClick={(e) => handleNodeClick(node.id, e)}
+        <g
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "center center",
+            transition: "transform 0.1s ease-out",
+          }}
+        >
+          <defs>
+            <linearGradient id="etherealGrad">
+              <stop offset="0%" stopColor="#00ffff" />
+              <stop offset="100%" stopColor="#ff00ff" />
+            </linearGradient>
+            <linearGradient id="etherealGradAlt">
+              <stop offset="0%" stopColor="#ff00ff" />
+              <stop offset="100%" stopColor="#00ffff" />
+            </linearGradient>
+            <filter id="nodeBlur" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="1" />
+            </filter>
+            <filter
+              id="nodeGlow"
+              x="-100%"
+              y="-100%"
+              width="300%"
+              height="300%"
             >
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={radius}
-                fill="rgba(255, 255, 255, 0.05)"
-                stroke={
-                  isHovered || isSelected ? "#fff" : "rgba(100, 200, 255, 0.4)"
-                }
-                strokeWidth={isHovered || isSelected ? 2 : 1}
-                filter={
-                  isHovered || isSelected
-                    ? "url(#strongGlow)"
-                    : "url(#nodeBlur)"
-                }
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter
+              id="strongGlow"
+              x="-100%"
+              y="-100%"
+              width="300%"
+              height="300%"
+            >
+              <feGaussianBlur stdDeviation="10" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <radialGradient id="bgGlow1" cx="30%" cy="30%" r="50%">
+              <stop offset="0%" stopColor="#0f172a" />
+              <stop offset="100%" stopColor="#000" />
+            </radialGradient>
+            <radialGradient id="bgGlow2" cx="70%" cy="70%" r="40%">
+              <stop offset="0%" stopColor="rgba(100, 200, 255, 0.03)" />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+            <radialGradient id="bgGlow3" cx="20%" cy="80%" r="35%">
+              <stop offset="0%" stopColor="rgba(255, 100, 255, 0.02)" />
+              <stop offset="100%" stopColor="transparent" />
+            </radialGradient>
+          </defs>
+
+          <rect width="100%" height="100%" fill="url(#bgGlow1)" />
+          <rect width="100%" height="100%" fill="url(#bgGlow2)" />
+          <rect width="100%" height="100%" fill="url(#bgGlow3)" />
+
+          {edges.map((edge) => {
+            const sourcePos = positions.get(edge.source);
+            const targetPos = positions.get(edge.target);
+            if (!sourcePos || !targetPos) return null;
+
+            const isHighlighted =
+              hoveredEdge === edge.id ||
+              activeNode === edge.source ||
+              activeNode === edge.target;
+
+            const isDraggingConnected =
+              draggedNode &&
+              (edge.source === draggedNode || edge.target === draggedNode);
+
+            const midX = (sourcePos.x + targetPos.x) / 2;
+            const midY = (sourcePos.y + targetPos.y) / 2;
+
+            // Calculate perpendicular offset for consistent curve
+            const dx = targetPos.x - sourcePos.x;
+            const dy = targetPos.y - sourcePos.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const curveOffset = Math.min(40, Math.max(15, len * 0.15));
+            const nx = -dy / len;
+            const ny = dx / len;
+            const ctrlX = midX + nx * curveOffset;
+            const ctrlY = midY + ny * curveOffset;
+
+            return (
+              <g key={edge.id}>
+                <path
+                  d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={20}
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setHoveredEdge(edge.id)}
+                  onMouseLeave={() => setHoveredEdge(null)}
+                />
+                <path
+                  d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
+                  fill="none"
+                  stroke={isHighlighted ? "#fff" : "url(#etherealGrad)"}
+                  strokeWidth={isHighlighted ? 2 : 1.5}
+                  strokeOpacity={isHighlighted ? 0.8 : 0.3}
+                  strokeLinecap="round"
+                  filter={isHighlighted ? "url(#nodeGlow)" : undefined}
+                  style={{
+                    transition: "all 0.3s ease",
+                    pointerEvents: "none",
+                  }}
+                />
+                {isHighlighted && !isDraggingConnected && (
+                  <g style={{ pointerEvents: "none" }}>
+                    <rect
+                      x={ctrlX - 120}
+                      y={ctrlY - 28}
+                      width={240}
+                      height={36}
+                      rx={4}
+                      fill="rgba(0, 0, 0, 0.85)"
+                      stroke="rgba(100, 200, 255, 0.3)"
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={ctrlX}
+                      y={ctrlY - 6}
+                      textAnchor="middle"
+                      fill="rgba(255, 255, 255, 0.8)"
+                      fontSize="12"
+                      fontFamily="Georgia, serif"
+                      fontStyle="italic"
+                    >
+                      {edge.fact.length > 45
+                        ? edge.fact.slice(0, 45) + "..."
+                        : edge.fact}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          {nodes.map((node) => {
+            const pos = positions.get(node.id);
+            if (!pos) return null;
+
+            const isHovered = hoveredNode === node.id;
+            const isSelected = selectedNode === node.id;
+            const isDragging = draggedNode === node.id;
+            const isConnected = connectedNodes?.has(node.id);
+            const isDimmed =
+              activeNode &&
+              !isConnected &&
+              !isHovered &&
+              !isSelected &&
+              !isDragging;
+
+            // Calculate node size based on connection count
+            const connectionCount = edges.filter(
+              (e) => e.source === node.id || e.target === node.id,
+            ).length;
+            const baseRadius = 16 + Math.min(connectionCount * 4, 20);
+            const radius =
+              isHovered || isSelected || isDragging
+                ? baseRadius * 1.2
+                : baseRadius;
+
+            return (
+              <g
+                key={node.id}
                 style={{
-                  transition: isDragging ? "none" : "all 0.2s ease",
+                  cursor: isDragging ? "grabbing" : "grab",
+                  opacity: isDimmed ? 0.3 : 1,
+                  transition: isDragging ? "none" : "opacity 0.3s ease",
                 }}
-              />
-              <text
-                x={pos.x}
-                y={pos.y + radius + 18}
-                textAnchor="middle"
-                fill={
-                  isHovered || isSelected
-                    ? "rgba(255, 255, 255, 0.9)"
-                    : "rgba(255, 255, 255, 0.6)"
-                }
-                fontSize="14"
-                fontFamily="Georgia, 'Times New Roman', serif"
-                fontStyle="italic"
-                style={{
-                  transition: "all 0.2s ease",
-                  pointerEvents: "none",
-                  userSelect: "none",
-                }}
+                onMouseEnter={() => !draggedNode && setHoveredNode(node.id)}
+                onMouseLeave={() => !draggedNode && setHoveredNode(null)}
+                onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
+                onClick={(e) => handleNodeClick(node.id, e)}
               >
-                {node.label.length > 20
-                  ? node.label.slice(0, 20) + "..."
-                  : node.label}
-              </text>
-              {(isHovered || isSelected) && (
+                <circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={radius}
+                  fill="rgba(255, 255, 255, 0.05)"
+                  stroke={
+                    isHovered || isSelected
+                      ? "#fff"
+                      : "rgba(100, 200, 255, 0.4)"
+                  }
+                  strokeWidth={isHovered || isSelected ? 2 : 1}
+                  filter={
+                    isHovered || isSelected
+                      ? "url(#strongGlow)"
+                      : "url(#nodeBlur)"
+                  }
+                  style={{
+                    transition: isDragging ? "none" : "all 0.2s ease",
+                  }}
+                />
                 <text
                   x={pos.x}
-                  y={pos.y + radius + 34}
+                  y={pos.y + radius + 18}
                   textAnchor="middle"
-                  fill="rgba(100, 200, 255, 0.7)"
-                  fontSize="11"
-                  fontFamily="Georgia, serif"
+                  fill={
+                    isHovered || isSelected
+                      ? "rgba(255, 255, 255, 0.9)"
+                      : "rgba(255, 255, 255, 0.6)"
+                  }
+                  fontSize="14"
+                  fontFamily="Georgia, 'Times New Roman', serif"
                   fontStyle="italic"
-                  style={{ pointerEvents: "none" }}
+                  style={{
+                    transition: "all 0.2s ease",
+                    pointerEvents: "none",
+                    userSelect: "none",
+                  }}
                 >
-                  {node.type}
+                  {node.label.length > 20
+                    ? node.label.slice(0, 20) + "..."
+                    : node.label}
                 </text>
-              )}
-            </g>
-          );
-        })}
+                {(isHovered || isSelected) && (
+                  <text
+                    x={pos.x}
+                    y={pos.y + radius + 34}
+                    textAnchor="middle"
+                    fill="rgba(100, 200, 255, 0.7)"
+                    fontSize="11"
+                    fontFamily="Georgia, serif"
+                    fontStyle="italic"
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {node.type}
+                  </text>
+                )}
+              </g>
+            );
+          })}
 
-        {nodes.length === 0 && (
-          <text
-            x={VIEW_WIDTH / 2}
-            y={VIEW_HEIGHT / 2}
-            textAnchor="middle"
-            fill="rgba(255, 255, 255, 0.4)"
-            fontSize="18"
-            fontFamily="Georgia, serif"
-            fontStyle="italic"
-          >
-            awaiting knowledge...
-          </text>
-        )}
+          {nodes.length === 0 && (
+            <text
+              x={VIEW_WIDTH / 2}
+              y={VIEW_HEIGHT / 2}
+              textAnchor="middle"
+              fill="rgba(255, 255, 255, 0.4)"
+              fontSize="18"
+              fontFamily="Georgia, serif"
+              fontStyle="italic"
+            >
+              awaiting knowledge...
+            </text>
+          )}
+        </g>
       </svg>
 
       <div style={memoryStyles.legendContainer}>
@@ -2633,6 +4101,499 @@ function LogEntryItem({
     </div>
   );
 }
+
+function SkillCard({
+  skill,
+  onClick,
+}: {
+  skill: SkillWithMeta;
+  onClick: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const isImplemented = skill.status === "implemented";
+
+  return (
+    <div
+      style={{
+        ...skillsStyles.skillCard,
+        ...(isImplemented && isHovered ? skillsStyles.skillCardHover : {}),
+        ...(isImplemented ? {} : skillsStyles.skillCardComingSoon),
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={isImplemented ? onClick : undefined}
+    >
+      <div style={skillsStyles.skillCardHeader}>
+        <span style={skillsStyles.skillName}>{skill.displayName}</span>
+        {isImplemented ? (
+          <span style={skillsStyles.skillBadgeCode}>Code</span>
+        ) : (
+          <span style={skillsStyles.skillBadgeComingSoon}>Coming Soon</span>
+        )}
+      </div>
+      {isImplemented && (
+        <span style={skillsStyles.skillVersion}>v{skill.version}</span>
+      )}
+      <p style={skillsStyles.skillDescription}>
+        {skill.description
+          ? skill.description.length > 80
+            ? skill.description.slice(0, 80) + "..."
+            : skill.description
+          : "No description available"}
+      </p>
+      {isImplemented && skill.tools && skill.tools.length > 0 && (
+        <div style={skillsStyles.skillToolCount}>
+          <span style={skillsStyles.toolIcon}>🔧</span>
+          {skill.tools.length} tool{skill.tools.length !== 1 ? "s" : ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SkillModal({
+  skill,
+  onClose,
+}: {
+  skill: SkillWithMeta;
+  onClose: () => void;
+}) {
+  return (
+    <div style={skillsStyles.modalOverlay} onClick={onClose}>
+      <div
+        style={skillsStyles.modalContent}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button style={skillsStyles.modalClose} onClick={onClose}>
+          ✕
+        </button>
+
+        <div style={skillsStyles.modalHeader}>
+          <span style={skillsStyles.modalEmoji}>{skill.groupEmoji}</span>
+          <div>
+            <h2 style={skillsStyles.modalTitle}>{skill.displayName}</h2>
+            <div style={skillsStyles.modalMeta}>
+              <span>v{skill.version}</span>
+              <span style={skillsStyles.modalMetaDot}>•</span>
+              <span>
+                {skill.isCodeBased ? "Code-Based Skill" : "Markdown Skill"}
+              </span>
+              <span style={skillsStyles.modalMetaDot}>•</span>
+              <span>{skill.groupName}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={skillsStyles.modalSection}>
+          <h3 style={skillsStyles.modalSectionTitle}>Description</h3>
+          <p style={skillsStyles.modalText}>
+            {skill.description || "No description available."}
+          </p>
+        </div>
+
+        {skill.trigger && (
+          <div style={skillsStyles.modalSection}>
+            <h3 style={skillsStyles.modalSectionTitle}>Triggers On</h3>
+            <p style={skillsStyles.modalTrigger}>"{skill.trigger}"</p>
+          </div>
+        )}
+
+        {skill.tools && skill.tools.length > 0 && (
+          <div style={skillsStyles.modalSection}>
+            <h3 style={skillsStyles.modalSectionTitle}>
+              Available Tools ({skill.tools.length})
+            </h3>
+            <div style={skillsStyles.toolsList}>
+              {skill.tools.map((tool) => (
+                <ToolCard key={tool.name} tool={tool} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ToolCard({ tool }: { tool: Tool }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hasParams =
+    tool.input_schema?.properties &&
+    Object.keys(tool.input_schema.properties).length > 0;
+
+  return (
+    <div style={skillsStyles.toolCard}>
+      <div
+        style={skillsStyles.toolCardHeader}
+        onClick={() => hasParams && setIsExpanded(!isExpanded)}
+      >
+        <div>
+          <span style={skillsStyles.toolName}>{tool.name}</span>
+          <p style={skillsStyles.toolDescription}>{tool.description}</p>
+        </div>
+        {hasParams && (
+          <span style={skillsStyles.toolExpand}>{isExpanded ? "▼" : "▶"}</span>
+        )}
+      </div>
+      {isExpanded && hasParams && (
+        <div style={skillsStyles.toolParams}>
+          <div style={skillsStyles.toolParamsTitle}>Parameters:</div>
+          {Object.entries(tool.input_schema.properties).map(
+            ([name, schema]) => {
+              const paramSchema = schema as {
+                type?: string;
+                description?: string;
+              };
+              const isRequired = tool.input_schema.required?.includes(name);
+              return (
+                <div key={name} style={skillsStyles.toolParam}>
+                  <span style={skillsStyles.toolParamName}>
+                    {name}
+                    {isRequired && (
+                      <span style={skillsStyles.toolParamRequired}>*</span>
+                    )}
+                  </span>
+                  <span style={skillsStyles.toolParamType}>
+                    {paramSchema.type || "any"}
+                  </span>
+                  {paramSchema.description && (
+                    <span style={skillsStyles.toolParamDesc}>
+                      {paramSchema.description}
+                    </span>
+                  )}
+                </div>
+              );
+            },
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const skillsStyles: Record<string, CSSProperties> = {
+  loadingContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4rem",
+    gap: "1rem",
+  },
+  statsBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: "2rem",
+    padding: "1rem 1.5rem",
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    marginBottom: "2rem",
+  },
+  statItem: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  statNumber: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "1.5rem",
+    fontWeight: 600,
+    color: COLORS.accent,
+  },
+  statLabel: {
+    fontSize: "0.75rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: COLORS.muted,
+  },
+  statDivider: {
+    width: "1px",
+    height: "40px",
+    background: COLORS.border,
+  },
+  groupsContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2.5rem",
+  },
+  skillGroup: {
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    overflow: "hidden",
+  },
+  groupHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "1rem 1.5rem",
+    borderBottom: `1px solid ${COLORS.border}`,
+    background: COLORS.bg,
+  },
+  groupEmoji: {
+    fontSize: "1.25rem",
+  },
+  groupName: {
+    fontSize: "1rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    flex: 1,
+  },
+  groupCount: {
+    fontSize: "0.8rem",
+    color: COLORS.muted,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  skillsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gap: "1rem",
+    padding: "1.5rem",
+  },
+  skillCard: {
+    background: "white",
+    border: `1px solid ${COLORS.border}`,
+    padding: "1.25rem",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.5rem",
+  },
+  skillCardHover: {
+    borderColor: COLORS.accent,
+    transform: "translateY(-2px)",
+    boxShadow: "0 4px 12px rgba(99, 102, 241, 0.15)",
+  },
+  skillCardComingSoon: {
+    opacity: 0.6,
+    cursor: "default",
+    background: COLORS.bg,
+  },
+  skillCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "0.5rem",
+  },
+  skillName: {
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    color: COLORS.text,
+  },
+  skillVersion: {
+    fontSize: "0.75rem",
+    color: COLORS.muted,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  skillBadgeCode: {
+    fontSize: "0.65rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    padding: "2px 6px",
+    background: "rgba(99, 102, 241, 0.1)",
+    color: COLORS.accent,
+    border: `1px solid ${COLORS.accent}`,
+  },
+  skillBadgeComingSoon: {
+    fontSize: "0.65rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    padding: "2px 6px",
+    background: "rgba(107, 114, 128, 0.1)",
+    color: COLORS.muted,
+    border: `1px solid ${COLORS.muted}`,
+  },
+  skillDescription: {
+    fontSize: "0.85rem",
+    color: COLORS.muted,
+    lineHeight: 1.4,
+    margin: 0,
+    flex: 1,
+  },
+  skillToolCount: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.35rem",
+    fontSize: "0.8rem",
+    color: COLORS.text,
+    fontFamily: "'JetBrains Mono', monospace",
+    marginTop: "0.5rem",
+    paddingTop: "0.75rem",
+    borderTop: `1px solid ${COLORS.border}`,
+  },
+  toolIcon: {
+    fontSize: "0.9rem",
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: "2rem",
+  },
+  modalContent: {
+    background: "white",
+    maxWidth: "700px",
+    width: "100%",
+    maxHeight: "85vh",
+    overflowY: "auto",
+    position: "relative",
+    border: `1px solid ${COLORS.border}`,
+    boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+  },
+  modalClose: {
+    position: "absolute",
+    top: "1rem",
+    right: "1rem",
+    background: "transparent",
+    border: "none",
+    fontSize: "1.25rem",
+    cursor: "pointer",
+    color: COLORS.muted,
+    padding: "0.5rem",
+    lineHeight: 1,
+    transition: "color 0.2s",
+  },
+  modalHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "1rem",
+    padding: "2rem",
+    borderBottom: `1px solid ${COLORS.border}`,
+    background: COLORS.bg,
+  },
+  modalEmoji: {
+    fontSize: "2.5rem",
+    lineHeight: 1,
+  },
+  modalTitle: {
+    fontSize: "1.5rem",
+    fontWeight: 700,
+    margin: 0,
+    color: COLORS.text,
+  },
+  modalMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    marginTop: "0.5rem",
+    fontSize: "0.85rem",
+    color: COLORS.muted,
+  },
+  modalMetaDot: {
+    color: COLORS.border,
+  },
+  modalSection: {
+    padding: "1.5rem 2rem",
+    borderBottom: `1px solid ${COLORS.border}`,
+  },
+  modalSectionTitle: {
+    fontSize: "0.75rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.1em",
+    color: COLORS.muted,
+    marginBottom: "0.75rem",
+    margin: 0,
+  },
+  modalText: {
+    fontSize: "1rem",
+    color: COLORS.text,
+    lineHeight: 1.6,
+    margin: "0.75rem 0 0 0",
+  },
+  modalTrigger: {
+    fontSize: "0.95rem",
+    fontStyle: "italic",
+    color: COLORS.text,
+    background: COLORS.bg,
+    padding: "1rem",
+    margin: "0.75rem 0 0 0",
+    border: `1px solid ${COLORS.border}`,
+  },
+  toolsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.75rem",
+    marginTop: "0.75rem",
+  },
+  toolCard: {
+    border: `1px solid ${COLORS.border}`,
+    background: COLORS.bg,
+  },
+  toolCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    padding: "1rem",
+    cursor: "pointer",
+  },
+  toolName: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    color: COLORS.accent,
+  },
+  toolDescription: {
+    fontSize: "0.85rem",
+    color: COLORS.muted,
+    margin: "0.25rem 0 0 0",
+    lineHeight: 1.4,
+  },
+  toolExpand: {
+    fontSize: "0.7rem",
+    color: COLORS.muted,
+    padding: "0.25rem",
+  },
+  toolParams: {
+    borderTop: `1px solid ${COLORS.border}`,
+    padding: "1rem",
+    background: "white",
+  },
+  toolParamsTitle: {
+    fontSize: "0.7rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: COLORS.muted,
+    marginBottom: "0.75rem",
+  },
+  toolParam: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "baseline",
+    gap: "0.5rem",
+    marginBottom: "0.5rem",
+    fontSize: "0.85rem",
+  },
+  toolParamName: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 600,
+    color: COLORS.text,
+  },
+  toolParamRequired: {
+    color: COLORS.danger,
+    marginLeft: "2px",
+  },
+  toolParamType: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "0.75rem",
+    color: COLORS.muted,
+    background: COLORS.bg,
+    padding: "1px 4px",
+    border: `1px solid ${COLORS.border}`,
+  },
+  toolParamDesc: {
+    color: COLORS.muted,
+    fontSize: "0.8rem",
+    width: "100%",
+    marginTop: "0.25rem",
+  },
+};
 
 const logsStyles: Record<string, CSSProperties> = {
   container: {

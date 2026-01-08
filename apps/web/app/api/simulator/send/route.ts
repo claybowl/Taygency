@@ -5,6 +5,9 @@ import type {
   AgentExecutionTrace,
   AgentLogEntry,
 } from "@vibe-planning/shared";
+import { getGitHubStorage } from "@/lib/github-storage";
+
+const LOGS_DIR = "logs";
 
 interface SimulatorRequest {
   channel: "email" | "sms";
@@ -104,6 +107,8 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await persistTrace(trace);
+
       return NextResponse.json({
         success: true,
         response: agentResponse,
@@ -116,6 +121,8 @@ export async function POST(req: NextRequest) {
       );
       const mockResponse = getMockResponse(channel, message);
       const mockTrace = createMockTrace(channel, message);
+
+      await persistTrace(mockTrace);
 
       return NextResponse.json({
         success: true,
@@ -207,4 +214,28 @@ function getMockResponse(channel: string, message: string): AgentResponse {
       skillsExecuted: [],
     },
   };
+}
+
+async function persistTrace(trace: AgentExecutionTrace): Promise<void> {
+  try {
+    const storage = getGitHubStorage();
+
+    const logsExist = await storage.exists(`${LOGS_DIR}/.gitkeep`);
+    if (!logsExist) {
+      await storage.writeFile(
+        `${LOGS_DIR}/.gitkeep`,
+        "",
+        "Initialize logs directory",
+      );
+    }
+
+    const filename = `${trace.traceId}.json`;
+    await storage.writeFile(
+      `${LOGS_DIR}/${filename}`,
+      JSON.stringify(trace, null, 2),
+      `Add execution trace ${trace.traceId}`,
+    );
+  } catch (err) {
+    console.warn("[Simulator] Failed to persist trace:", err);
+  }
 }

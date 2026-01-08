@@ -84,18 +84,31 @@ export interface WorkspaceConfig {
   lastActive: string;
 }
 
+export interface Tool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
 export interface Skill {
   name: string;
   version: string;
-  trigger: string;
+  trigger?: string;
   description?: string;
   content: string;
+  tools?: Tool[];
+  isCodeBased?: boolean;
 }
 
 export interface SkillResult {
   success: boolean;
   output: string;
   changes?: AgentAction[];
+  data?: Record<string, unknown>;
 }
 
 export interface TasksResponse {
