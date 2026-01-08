@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef, CSSProperties } from "react";
-import type { Task, TasksResponse, AgentResponse } from "@vibe-planning/shared";
+import type {
+  Task,
+  TasksResponse,
+  AgentResponse,
+  AgentExecutionTrace,
+  AgentLogEntry,
+  AgentLogEvent,
+} from "@vibe-planning/shared";
 
 type PageId =
   | "overview"
@@ -10,7 +17,25 @@ type PageId =
   | "files"
   | "logs"
   | "context"
+  | "memory"
   | "simulator";
+
+interface MemoryResponse {
+  enabled: boolean;
+  healthy: boolean;
+  stats: {
+    totalFacts: number;
+    totalEntities: number;
+    recentFacts: number;
+    patterns: number;
+    preferences: number;
+  };
+  recentFacts: Array<{ fact: string; validAt?: string; score: number }>;
+  graph: {
+    nodes: Array<{ id: string; label: string; type: string }>;
+    edges: Array<{ id: string; source: string; target: string; fact: string }>;
+  };
+}
 type TaskFilter = "active" | "completed" | "someday";
 
 export default function DashboardPage() {
@@ -22,10 +47,14 @@ export default function DashboardPage() {
   const [barsAnimated, setBarsAnimated] = useState(false);
   const [simulatorResponse, setSimulatorResponse] =
     useState<AgentResponse | null>(null);
+  const [simulatorTrace, setSimulatorTrace] =
+    useState<AgentExecutionTrace | null>(null);
   const [simulatorError, setSimulatorError] = useState<string | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string>("config.json");
   const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
+  const [memoryData, setMemoryData] = useState<MemoryResponse | null>(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
 
   // Form state for simulator
   const [simChannel, setSimChannel] = useState<"email" | "sms">("email");
@@ -103,6 +132,33 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (currentPage === "memory" && !memoryData) {
+      setMemoryLoading(true);
+      fetch("/api/dashboard/memory")
+        .then((res) => res.json())
+        .then((data: MemoryResponse) => {
+          setMemoryData(data);
+        })
+        .catch(() => {
+          setMemoryData({
+            enabled: false,
+            healthy: false,
+            stats: {
+              totalFacts: 0,
+              totalEntities: 0,
+              recentFacts: 0,
+              patterns: 0,
+              preferences: 0,
+            },
+            recentFacts: [],
+            graph: { nodes: [], edges: [] },
+          });
+        })
+        .finally(() => setMemoryLoading(false));
+    }
+  }, [currentPage, memoryData]);
+
   const showPage = (pageId: PageId) => {
     setCurrentPage(pageId);
   };
@@ -115,6 +171,7 @@ export default function DashboardPage() {
 
     setIsSimulating(true);
     setSimulatorResponse(null);
+    setSimulatorTrace(null);
     setSimulatorError(null);
 
     try {
@@ -141,6 +198,9 @@ export default function DashboardPage() {
       }
 
       setSimulatorResponse(data.response);
+      if (data.trace) {
+        setSimulatorTrace(data.trace);
+      }
     } catch (error) {
       setSimulatorError(
         error instanceof Error ? error.message : "An error occurred",
@@ -236,6 +296,7 @@ export default function DashboardPage() {
                 "files",
                 "logs",
                 "context",
+                "memory",
               ] as PageId[]
             ).map((page) => (
               <li key={page} style={styles.navItem}>
@@ -549,6 +610,160 @@ export default function DashboardPage() {
           </section>
         )}
 
+        {/* Memory Page */}
+        {currentPage === "memory" && (
+          <section style={styles.pageTransition}>
+            <div style={styles.pageHeader}>
+              <h1 style={styles.pageTitle}>Knowledge Graph</h1>
+              <p style={styles.pageSubtitle}>
+                Graphiti-powered episodic memory and entity relationships.
+              </p>
+            </div>
+
+            {memoryLoading ? (
+              <div style={styles.placeholderBox}>
+                <div style={styles.loadingSpinner} />
+                <p style={styles.placeholderText}>Loading memory data...</p>
+              </div>
+            ) : !memoryData?.enabled ? (
+              <div style={styles.placeholderBox}>
+                <div style={styles.placeholderIcon}>🔌</div>
+                <p style={styles.placeholderText}>Graphiti not configured</p>
+                <p style={styles.placeholderSubtext}>
+                  Set NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD to enable the
+                  knowledge graph.
+                </p>
+              </div>
+            ) : !memoryData?.healthy ? (
+              <div style={styles.placeholderBox}>
+                <div style={styles.placeholderIcon}>⚠️</div>
+                <p style={styles.placeholderText}>Graphiti connection failed</p>
+                <p style={styles.placeholderSubtext}>
+                  Check Neo4j database status and credentials.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Memory Stats */}
+                <div style={styles.statsGrid}>
+                  <StatCard
+                    label="Total Facts"
+                    value={memoryData.stats.totalFacts.toString()}
+                    hatch
+                  />
+                  <StatCard
+                    label="Total Entities"
+                    value={memoryData.stats.totalEntities.toString()}
+                  />
+                  <StatCard
+                    label="Recent (24h)"
+                    value={memoryData.stats.recentFacts.toString()}
+                    hatch
+                  />
+                  <StatCard
+                    label="Patterns"
+                    value={memoryData.stats.patterns.toString()}
+                    subValue={`/ ${memoryData.stats.preferences} prefs`}
+                  />
+                </div>
+
+                <div style={styles.dashboardContent}>
+                  {/* Knowledge Graph Visualization */}
+                  <div style={{ ...styles.sectionBox, minHeight: "450px" }}>
+                    <div style={styles.sectionHeader}>
+                      <span style={styles.sectionTitle}>
+                        Entity Relationship Graph
+                      </span>
+                      <span style={styles.activityTime}>
+                        {memoryData.graph.nodes.length} nodes •{" "}
+                        {memoryData.graph.edges.length} edges
+                      </span>
+                    </div>
+                    {memoryData.graph.nodes.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "3rem",
+                          textAlign: "center" as const,
+                          color: COLORS.muted,
+                        }}
+                      >
+                        <p>No entities in the graph yet.</p>
+                        <p style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
+                          Facts will appear here as the agent learns from
+                          interactions.
+                        </p>
+                      </div>
+                    ) : (
+                      <KnowledgeGraph
+                        nodes={memoryData.graph.nodes}
+                        edges={memoryData.graph.edges}
+                      />
+                    )}
+                  </div>
+
+                  {/* Recent Facts List */}
+                  <div style={styles.sectionBox}>
+                    <div style={styles.sectionHeader}>
+                      <span style={styles.sectionTitle}>Recent Facts</span>
+                    </div>
+                    {memoryData.recentFacts.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "2rem",
+                          textAlign: "center" as const,
+                          color: COLORS.muted,
+                        }}
+                      >
+                        <p>No facts recorded yet.</p>
+                      </div>
+                    ) : (
+                      <ul style={styles.activityFeed}>
+                        {memoryData.recentFacts
+                          .slice(0, 8)
+                          .map((fact, index) => (
+                            <li
+                              key={index}
+                              style={{
+                                ...styles.activityItem,
+                                ...(index ===
+                                Math.min(7, memoryData.recentFacts.length - 1)
+                                  ? { borderBottom: "none" }
+                                  : {}),
+                              }}
+                            >
+                              <div style={memoryStyles.factIcon}>
+                                <span style={memoryStyles.factIconInner}>
+                                  F
+                                </span>
+                              </div>
+                              <div style={styles.activityContent}>
+                                <div style={styles.activityMeta}>
+                                  <span style={memoryStyles.factScore}>
+                                    {(fact.score * 100).toFixed(0)}% confidence
+                                  </span>
+                                  {fact.validAt && (
+                                    <span style={styles.activityTime}>
+                                      {new Date(
+                                        fact.validAt,
+                                      ).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                                <p style={styles.activityPreview}>
+                                  {fact.fact}
+                                </p>
+                              </div>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
         {/* Simulator Page */}
         {currentPage === "simulator" && (
           <section style={styles.pageTransition}>
@@ -559,115 +774,123 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div style={styles.simulatorLayout}>
-              <div style={styles.composer}>
-                <div style={styles.inputGroup}>
-                  <label style={styles.inputLabel}>Channel</label>
-                  <select
-                    value={simChannel}
-                    onChange={(e) =>
-                      setSimChannel(e.target.value as "email" | "sms")
-                    }
-                    style={styles.select}
-                  >
-                    <option value="email">Email</option>
-                    <option value="sms">SMS</option>
-                  </select>
-                </div>
+            <div style={styles.simulatorContainer}>
+              <div style={styles.simulatorLayout}>
+                <div style={styles.composer}>
+                  <div style={styles.inputGroup}>
+                    <label style={styles.inputLabel}>Channel</label>
+                    <select
+                      value={simChannel}
+                      onChange={(e) =>
+                        setSimChannel(e.target.value as "email" | "sms")
+                      }
+                      style={styles.select}
+                    >
+                      <option value="email">Email</option>
+                      <option value="sms">SMS</option>
+                    </select>
+                  </div>
 
-                {simChannel === "email" && (
-                  <>
-                    <div style={styles.inputGroup}>
-                      <label style={styles.inputLabel}>From</label>
-                      <input
-                        type="text"
-                        placeholder="sender@domain.com"
-                        value={simFrom}
-                        onChange={(e) => setSimFrom(e.target.value)}
-                        style={styles.input}
-                      />
+                  {simChannel === "email" && (
+                    <>
+                      <div style={styles.inputGroup}>
+                        <label style={styles.inputLabel}>From</label>
+                        <input
+                          type="text"
+                          placeholder="sender@domain.com"
+                          value={simFrom}
+                          onChange={(e) => setSimFrom(e.target.value)}
+                          style={styles.input}
+                        />
+                      </div>
+                      <div style={styles.inputGroup}>
+                        <label style={styles.inputLabel}>Subject</label>
+                        <input
+                          type="text"
+                          placeholder="Subject line..."
+                          value={simSubject}
+                          onChange={(e) => setSimSubject(e.target.value)}
+                          style={styles.input}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div style={styles.inputGroup}>
+                    <label style={styles.inputLabel}>Message Body</label>
+                    <textarea
+                      rows={8}
+                      placeholder="Type mock message here..."
+                      value={simBody}
+                      onChange={(e) => setSimBody(e.target.value)}
+                      style={styles.textarea}
+                    />
+                  </div>
+
+                  <button onClick={simulateSend} style={styles.btnPrimary}>
+                    Dispatch Trigger
+                  </button>
+
+                  <div style={styles.presetsSection}>
+                    <label style={styles.statLabel}>Quick Presets</label>
+                    <div style={styles.presetsGrid}>
+                      <button
+                        style={styles.presetBtn}
+                        onClick={() => {
+                          setSimSubject("Can we reschedule?");
+                          setSimBody(
+                            "Hey, can we move our 3pm meeting to 4pm? I have a conflict.",
+                          );
+                        }}
+                      >
+                        Reschedule Meeting
+                      </button>
+                      <button
+                        style={styles.presetBtn}
+                        onClick={() => {
+                          setSimSubject("New task");
+                          setSimBody(
+                            "Please add 'Review Q4 strategy' to my task list with high priority.",
+                          );
+                        }}
+                      >
+                        New Task Request
+                      </button>
+                      <button
+                        style={styles.presetBtn}
+                        onClick={() => {
+                          setSimSubject("Schedule conflict");
+                          setSimBody(
+                            "I need to attend both the team standup and client call at 10am. Can you help resolve this?",
+                          );
+                        }}
+                      >
+                        Complex Conflict
+                      </button>
                     </div>
-                    <div style={styles.inputGroup}>
-                      <label style={styles.inputLabel}>Subject</label>
-                      <input
-                        type="text"
-                        placeholder="Subject line..."
-                        value={simSubject}
-                        onChange={(e) => setSimSubject(e.target.value)}
-                        style={styles.input}
-                      />
-                    </div>
-                  </>
-                )}
-
-                <div style={styles.inputGroup}>
-                  <label style={styles.inputLabel}>Message Body</label>
-                  <textarea
-                    rows={8}
-                    placeholder="Type mock message here..."
-                    value={simBody}
-                    onChange={(e) => setSimBody(e.target.value)}
-                    style={styles.textarea}
-                  />
-                </div>
-
-                <button onClick={simulateSend} style={styles.btnPrimary}>
-                  Dispatch Trigger
-                </button>
-
-                <div style={styles.presetsSection}>
-                  <label style={styles.statLabel}>Quick Presets</label>
-                  <div style={styles.presetsGrid}>
-                    <button
-                      style={styles.presetBtn}
-                      onClick={() => {
-                        setSimSubject("Can we reschedule?");
-                        setSimBody(
-                          "Hey, can we move our 3pm meeting to 4pm? I have a conflict.",
-                        );
-                      }}
-                    >
-                      Reschedule Meeting
-                    </button>
-                    <button
-                      style={styles.presetBtn}
-                      onClick={() => {
-                        setSimSubject("New task");
-                        setSimBody(
-                          "Please add 'Review Q4 strategy' to my task list with high priority.",
-                        );
-                      }}
-                    >
-                      New Task Request
-                    </button>
-                    <button
-                      style={styles.presetBtn}
-                      onClick={() => {
-                        setSimSubject("Schedule conflict");
-                        setSimBody(
-                          "I need to attend both the team standup and client call at 10am. Can you help resolve this?",
-                        );
-                      }}
-                    >
-                      Complex Conflict
-                    </button>
                   </div>
                 </div>
-              </div>
 
-              <div style={styles.responseView}>
-                {isSimulating ? (
-                  <div style={styles.processingText}>[PROCESSING...]</div>
-                ) : simulatorError ? (
-                  <div style={styles.errorText}>
-                    <span style={{ color: COLORS.danger }}>ERROR:</span>{" "}
-                    {simulatorError}
+                <div style={styles.responsePanel}>
+                  <div style={styles.responseView}>
+                    {isSimulating ? (
+                      <div style={styles.processingText}>[PROCESSING...]</div>
+                    ) : simulatorError ? (
+                      <div style={styles.errorText}>
+                        <span style={{ color: COLORS.danger }}>ERROR:</span>{" "}
+                        {simulatorError}
+                      </div>
+                    ) : simulatorResponse ? (
+                      <SimulatorResponseContent response={simulatorResponse} />
+                    ) : (
+                      <div style={styles.waitingText}>
+                        // Waiting for input...
+                      </div>
+                    )}
                   </div>
-                ) : simulatorResponse ? (
-                  <SimulatorResponseContent response={simulatorResponse} />
-                ) : (
-                  <div style={styles.waitingText}>// Waiting for input...</div>
-                )}
+
+                  {simulatorTrace && <AgentLogsViewer trace={simulatorTrace} />}
+                </div>
               </div>
             </div>
           </section>
@@ -860,6 +1083,269 @@ function TreeItem({
   );
 }
 
+const NODE_TYPE_COLORS: Record<string, string> = {
+  Person: "#3b82f6",
+  Task: "#22c55e",
+  Project: "#8b5cf6",
+  Pattern: "#f59e0b",
+  Preference: "#ec4899",
+  default: "#6b7280",
+};
+
+function KnowledgeGraph({
+  nodes,
+  edges,
+}: {
+  nodes: Array<{ id: string; label: string; type: string }>;
+  edges: Array<{ id: string; source: string; target: string; fact: string }>;
+}) {
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+
+  const nodePositions = useRef<Map<string, { x: number; y: number }>>(
+    new Map(),
+  );
+
+  if (nodePositions.current.size !== nodes.length) {
+    nodePositions.current.clear();
+    const centerX = 300;
+    const centerY = 180;
+    const radiusX = 220;
+    const radiusY = 130;
+
+    nodes.forEach((node, i) => {
+      const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+      const jitterX = (Math.random() - 0.5) * 30;
+      const jitterY = (Math.random() - 0.5) * 20;
+      nodePositions.current.set(node.id, {
+        x: centerX + radiusX * Math.cos(angle) + jitterX,
+        y: centerY + radiusY * Math.sin(angle) + jitterY,
+      });
+    });
+  }
+
+  const getNodeColor = (type: string) =>
+    NODE_TYPE_COLORS[type] || NODE_TYPE_COLORS.default;
+
+  const connectedNodes = hoveredNode
+    ? new Set(
+        edges
+          .filter((e) => e.source === hoveredNode || e.target === hoveredNode)
+          .flatMap((e) => [e.source, e.target]),
+      )
+    : null;
+
+  return (
+    <div style={memoryStyles.graphContainer}>
+      <svg
+        width="100%"
+        height="360"
+        viewBox="0 0 600 360"
+        style={{ display: "block" }}
+      >
+        <defs>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={COLORS.border} stopOpacity="0.3" />
+            <stop offset="50%" stopColor={COLORS.muted} stopOpacity="0.6" />
+            <stop offset="100%" stopColor={COLORS.border} stopOpacity="0.3" />
+          </linearGradient>
+        </defs>
+
+        {edges.map((edge) => {
+          const sourcePos = nodePositions.current.get(edge.source);
+          const targetPos = nodePositions.current.get(edge.target);
+          if (!sourcePos || !targetPos) return null;
+
+          const isHighlighted =
+            hoveredEdge === edge.id ||
+            hoveredNode === edge.source ||
+            hoveredNode === edge.target;
+
+          const midX = (sourcePos.x + targetPos.x) / 2;
+          const midY = (sourcePos.y + targetPos.y) / 2;
+          const curveOffset = 20;
+          const dx = targetPos.x - sourcePos.x;
+          const dy = targetPos.y - sourcePos.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const nx = -dy / len;
+          const ny = dx / len;
+          const ctrlX = midX + nx * curveOffset;
+          const ctrlY = midY + ny * curveOffset;
+
+          return (
+            <g key={edge.id}>
+              <path
+                d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
+                fill="none"
+                stroke={isHighlighted ? COLORS.accent : "url(#edgeGradient)"}
+                strokeWidth={isHighlighted ? 2 : 1}
+                strokeOpacity={isHighlighted ? 1 : 0.5}
+                style={{
+                  transition: "all 0.2s ease",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={() => setHoveredEdge(edge.id)}
+                onMouseLeave={() => setHoveredEdge(null)}
+              />
+              {isHighlighted && (
+                <text
+                  x={ctrlX}
+                  y={ctrlY - 8}
+                  textAnchor="middle"
+                  fill={COLORS.text}
+                  fontSize="10"
+                  fontFamily="Inter, sans-serif"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {edge.fact.length > 40
+                    ? edge.fact.slice(0, 40) + "..."
+                    : edge.fact}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {nodes.map((node) => {
+          const pos = nodePositions.current.get(node.id);
+          if (!pos) return null;
+
+          const isHovered = hoveredNode === node.id;
+          const isConnected = connectedNodes?.has(node.id);
+          const isDimmed = hoveredNode && !isConnected && !isHovered;
+          const nodeColor = getNodeColor(node.type);
+
+          return (
+            <g
+              key={node.id}
+              style={{
+                cursor: "pointer",
+                transition: "opacity 0.2s ease",
+                opacity: isDimmed ? 0.3 : 1,
+              }}
+              onMouseEnter={() => setHoveredNode(node.id)}
+              onMouseLeave={() => setHoveredNode(null)}
+            >
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={isHovered ? 28 : 22}
+                fill={nodeColor}
+                fillOpacity={isHovered ? 0.25 : 0.15}
+                stroke={nodeColor}
+                strokeWidth={isHovered ? 2 : 1.5}
+                filter={isHovered ? "url(#glow)" : undefined}
+                style={{ transition: "all 0.2s ease" }}
+              />
+              <circle
+                cx={pos.x}
+                cy={pos.y}
+                r={isHovered ? 10 : 8}
+                fill={nodeColor}
+                style={{ transition: "all 0.2s ease" }}
+              />
+              <text
+                x={pos.x}
+                y={pos.y + (isHovered ? 44 : 38)}
+                textAnchor="middle"
+                fill={COLORS.text}
+                fontSize={isHovered ? "12" : "11"}
+                fontFamily="Inter, sans-serif"
+                fontWeight={isHovered ? 600 : 400}
+                style={{ transition: "all 0.2s ease" }}
+              >
+                {node.label.length > 15
+                  ? node.label.slice(0, 15) + "..."
+                  : node.label}
+              </text>
+              {isHovered && (
+                <text
+                  x={pos.x}
+                  y={pos.y + 56}
+                  textAnchor="middle"
+                  fill={COLORS.muted}
+                  fontSize="9"
+                  fontFamily="Inter, sans-serif"
+                >
+                  {node.type}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+
+      <div style={memoryStyles.legendContainer}>
+        {Object.entries(NODE_TYPE_COLORS)
+          .filter(([key]) => key !== "default")
+          .map(([type, color]) => (
+            <div key={type} style={memoryStyles.legendItem}>
+              <div style={{ ...memoryStyles.legendDot, background: color }} />
+              <span>{type}</span>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+const memoryStyles: Record<string, CSSProperties> = {
+  graphContainer: {
+    position: "relative",
+    padding: "1rem",
+    background: `linear-gradient(135deg, ${COLORS.bg} 0%, ${COLORS.surface} 100%)`,
+    minHeight: "400px",
+  },
+  legendContainer: {
+    display: "flex",
+    gap: "1.25rem",
+    justifyContent: "center",
+    padding: "0.75rem",
+    borderTop: `1px solid ${COLORS.border}`,
+    background: COLORS.surface,
+  },
+  legendItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    fontSize: "0.75rem",
+    color: COLORS.muted,
+  },
+  legendDot: {
+    width: "10px",
+    height: "10px",
+    borderRadius: "50%",
+  },
+  factIcon: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "4px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    background: "linear-gradient(135deg, #ddd6fe 0%, #e9d5ff 100%)",
+  },
+  factIconInner: {
+    fontSize: "0.75rem",
+    fontWeight: 700,
+    color: "#7c3aed",
+  },
+  factScore: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 600,
+    fontSize: "0.8rem",
+    color: COLORS.accent,
+  },
+};
+
 function SimulatorResponseContent({ response }: { response: AgentResponse }) {
   return (
     <>
@@ -925,6 +1411,410 @@ function SimulatorResponseContent({ response }: { response: AgentResponse }) {
     </>
   );
 }
+
+const LOG_LEVEL_COLORS: Record<string, string> = {
+  debug: "#6b7280",
+  info: "#22d3ee",
+  warn: "#fbbf24",
+  error: "#f87171",
+};
+
+function formatEventType(type: string): string {
+  return type
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    fractionalSecondDigits: 3,
+  });
+}
+
+function getEventDetails(
+  event: AgentLogEvent,
+): Array<{ key: string; value: string }> {
+  const details: Array<{ key: string; value: string }> = [];
+  const entries = Object.entries(event);
+
+  for (const [key, value] of entries) {
+    if (key === "type") continue;
+
+    let displayValue: string;
+    if (typeof value === "object" && value !== null) {
+      displayValue = JSON.stringify(value, null, 2);
+    } else if (typeof value === "boolean") {
+      displayValue = value ? "true" : "false";
+    } else {
+      displayValue = String(value);
+    }
+
+    details.push({ key, value: displayValue });
+  }
+
+  return details;
+}
+
+function AgentLogsViewer({ trace }: { trace: AgentExecutionTrace }) {
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const toggleLogExpanded = (logId: string) => {
+    setExpandedLogs((prev) => {
+      const next = new Set(prev);
+      if (next.has(logId)) {
+        next.delete(logId);
+      } else {
+        next.add(logId);
+      }
+      return next;
+    });
+  };
+
+  const expandAll = () => {
+    setExpandedLogs(new Set(trace.logs.map((log) => log.id)));
+  };
+
+  const collapseAll = () => {
+    setExpandedLogs(new Set());
+  };
+
+  return (
+    <div style={logsStyles.container}>
+      <div
+        style={logsStyles.header}
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        <div style={logsStyles.headerLeft}>
+          <span style={logsStyles.headerChevron}>
+            {isCollapsed ? "▶" : "▼"}
+          </span>
+          <span style={logsStyles.headerTitle}>EXECUTION TRACE</span>
+          <span style={logsStyles.traceId}>{trace.traceId}</span>
+        </div>
+        <div style={logsStyles.headerRight}>{trace.logs.length} events</div>
+      </div>
+
+      {!isCollapsed && (
+        <>
+          {trace.summary && (
+            <div style={logsStyles.summary}>
+              <div style={logsStyles.summaryItem}>
+                <span style={logsStyles.summaryValue}>
+                  {trace.summary.totalDurationMs}
+                </span>
+                <span style={logsStyles.summaryLabel}>ms</span>
+              </div>
+              <div style={logsStyles.summaryDivider} />
+              <div style={logsStyles.summaryItem}>
+                <span style={logsStyles.summaryValue}>
+                  {trace.summary.llmCalls}
+                </span>
+                <span style={logsStyles.summaryLabel}>LLM calls</span>
+              </div>
+              <div style={logsStyles.summaryDivider} />
+              <div style={logsStyles.summaryItem}>
+                <span style={logsStyles.summaryValue}>
+                  {trace.summary.toolCalls}
+                </span>
+                <span style={logsStyles.summaryLabel}>Tool calls</span>
+              </div>
+              <div style={logsStyles.summaryDivider} />
+              <div style={logsStyles.summaryItem}>
+                <span style={logsStyles.summaryValue}>
+                  {trace.summary.tokensUsed.toLocaleString()}
+                </span>
+                <span style={logsStyles.summaryLabel}>tokens</span>
+              </div>
+              <div style={logsStyles.summaryDivider} />
+              <div style={logsStyles.summaryItem}>
+                <span
+                  style={{
+                    ...logsStyles.summaryValue,
+                    color: trace.summary.success ? "#22c55e" : "#f87171",
+                  }}
+                >
+                  {trace.summary.success ? "SUCCESS" : "FAILED"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div style={logsStyles.controls}>
+            <button
+              style={logsStyles.controlBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                expandAll();
+              }}
+            >
+              Expand All
+            </button>
+            <button
+              style={logsStyles.controlBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                collapseAll();
+              }}
+            >
+              Collapse All
+            </button>
+          </div>
+
+          <div style={logsStyles.logsList}>
+            {trace.logs.map((log, index) => (
+              <LogEntryItem
+                key={log.id}
+                log={log}
+                index={index}
+                isExpanded={expandedLogs.has(log.id)}
+                onToggle={() => toggleLogExpanded(log.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function LogEntryItem({
+  log,
+  index,
+  isExpanded,
+  onToggle,
+}: {
+  log: AgentLogEntry;
+  index: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const levelColor = LOG_LEVEL_COLORS[log.level] || LOG_LEVEL_COLORS.info;
+  const details = getEventDetails(log.event);
+  const hasDetails = details.length > 0;
+
+  return (
+    <div
+      style={{
+        ...logsStyles.logEntry,
+        ...(isHovered ? logsStyles.logEntryHover : {}),
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div
+        style={logsStyles.logEntryHeader}
+        onClick={hasDetails ? onToggle : undefined}
+      >
+        <span style={logsStyles.lineNumber}>
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <span style={logsStyles.timestamp}>
+          {formatTimestamp(log.timestamp)}
+        </span>
+        <span
+          style={{
+            ...logsStyles.levelBadge,
+            color: levelColor,
+            borderColor: levelColor,
+          }}
+        >
+          {log.level.toUpperCase()}
+        </span>
+        <span style={logsStyles.eventType}>
+          {formatEventType(log.event.type)}
+        </span>
+        {log.durationMs !== undefined && (
+          <span style={logsStyles.duration}>+{log.durationMs}ms</span>
+        )}
+        {hasDetails && (
+          <span style={logsStyles.expandIndicator}>
+            {isExpanded ? "▼" : "▶"}
+          </span>
+        )}
+      </div>
+
+      {isExpanded && hasDetails && (
+        <div style={logsStyles.logDetails}>
+          {details.map(({ key, value }) => (
+            <div key={key} style={logsStyles.detailRow}>
+              <span style={logsStyles.detailKey}>{key}:</span>
+              <span
+                style={{
+                  ...logsStyles.detailValue,
+                  ...(value.includes("\n") ? { whiteSpace: "pre-wrap" } : {}),
+                }}
+              >
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const logsStyles: Record<string, CSSProperties> = {
+  container: {
+    background: "#0d1117",
+    borderTop: "1px solid #30363d",
+    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    fontSize: "0.8rem",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "0.75rem 1.25rem",
+    background: "linear-gradient(180deg, #161b22 0%, #0d1117 100%)",
+    borderBottom: "1px solid #30363d",
+    cursor: "pointer",
+    userSelect: "none",
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+  },
+  headerChevron: {
+    color: "#8b949e",
+    fontSize: "0.65rem",
+  },
+  headerTitle: {
+    color: "#c9d1d9",
+    fontWeight: 600,
+    letterSpacing: "0.1em",
+    fontSize: "0.7rem",
+  },
+  traceId: {
+    color: "#484f58",
+    fontSize: "0.7rem",
+  },
+  headerRight: {
+    color: "#8b949e",
+    fontSize: "0.75rem",
+  },
+  summary: {
+    display: "flex",
+    alignItems: "center",
+    gap: "1rem",
+    padding: "0.75rem 1.25rem",
+    background: "#161b22",
+    borderBottom: "1px solid #21262d",
+  },
+  summaryItem: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "0.35rem",
+  },
+  summaryValue: {
+    color: "#58a6ff",
+    fontWeight: 600,
+    fontSize: "0.85rem",
+  },
+  summaryLabel: {
+    color: "#8b949e",
+    fontSize: "0.7rem",
+  },
+  summaryDivider: {
+    width: "1px",
+    height: "16px",
+    background: "#30363d",
+  },
+  controls: {
+    display: "flex",
+    gap: "0.5rem",
+    padding: "0.5rem 1.25rem",
+    borderBottom: "1px solid #21262d",
+  },
+  controlBtn: {
+    background: "transparent",
+    border: "1px solid #30363d",
+    color: "#8b949e",
+    fontSize: "0.65rem",
+    padding: "0.25rem 0.5rem",
+    cursor: "pointer",
+    fontFamily: "'JetBrains Mono', monospace",
+    transition: "all 0.15s ease",
+  },
+  logsList: {
+    maxHeight: "300px",
+    overflowY: "auto",
+  },
+  logEntry: {
+    borderBottom: "1px solid #21262d",
+    transition: "background 0.1s ease",
+  },
+  logEntryHover: {
+    background: "#161b22",
+  },
+  logEntryHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "0.5rem 1.25rem",
+    cursor: "pointer",
+  },
+  lineNumber: {
+    color: "#484f58",
+    fontSize: "0.7rem",
+    minWidth: "20px",
+  },
+  timestamp: {
+    color: "#6e7681",
+    fontSize: "0.75rem",
+    minWidth: "90px",
+  },
+  levelBadge: {
+    fontSize: "0.6rem",
+    fontWeight: 700,
+    padding: "0.1rem 0.4rem",
+    border: "1px solid",
+    minWidth: "45px",
+    textAlign: "center",
+  },
+  eventType: {
+    color: "#c9d1d9",
+    flex: 1,
+  },
+  duration: {
+    color: "#484f58",
+    fontSize: "0.7rem",
+  },
+  expandIndicator: {
+    color: "#484f58",
+    fontSize: "0.6rem",
+    marginLeft: "auto",
+  },
+  logDetails: {
+    padding: "0.5rem 1.25rem 0.75rem 3.5rem",
+    background: "#0d1117",
+    borderTop: "1px solid #21262d",
+  },
+  detailRow: {
+    display: "flex",
+    gap: "0.75rem",
+    marginBottom: "0.35rem",
+    alignItems: "flex-start",
+  },
+  detailKey: {
+    color: "#7ee787",
+    minWidth: "120px",
+    flexShrink: 0,
+  },
+  detailValue: {
+    color: "#8b949e",
+    wordBreak: "break-word",
+  },
+};
 
 // Styles
 const styles: Record<string, CSSProperties> = {
@@ -1390,13 +2280,15 @@ const styles: Record<string, CSSProperties> = {
     marginTop: "0.5rem",
   },
 
-  // Simulator
+  simulatorContainer: {
+    border: `1px solid ${COLORS.border}`,
+    height: "calc(100vh - 200px)",
+    overflow: "hidden",
+  },
   simulatorLayout: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: 0,
-    border: `1px solid ${COLORS.border}`,
-    height: "calc(100vh - 200px)",
+    height: "100%",
   },
   composer: {
     padding: "2.5rem",
@@ -1404,10 +2296,15 @@ const styles: Record<string, CSSProperties> = {
     borderRight: `1px solid ${COLORS.border}`,
     background: COLORS.surface,
   },
+  responsePanel: {
+    display: "flex",
+    flexDirection: "column" as const,
+    background: "#1a1a1a",
+    overflowY: "auto" as const,
+  },
   responseView: {
     padding: "2.5rem",
-    overflowY: "auto" as const,
-    background: "#1a1a1a",
+    flex: 1,
     color: "#fff",
     fontFamily: "'JetBrains Mono', monospace",
   },

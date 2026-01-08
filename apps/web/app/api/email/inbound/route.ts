@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, rateLimited: true });
     }
 
-    const agentResponse = await processWithAgent({
+    const { response: agentResponse } = await processWithAgent({
       channel: "email",
       message: messageBody,
       context: { subject },

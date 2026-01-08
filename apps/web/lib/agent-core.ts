@@ -4,6 +4,7 @@ import type {
   AgentResponse,
   AgentAction,
   Channel,
+  AgentExecutionTrace,
 } from "@vibe-planning/shared";
 import { CLAUDE_CONFIG } from "@vibe-planning/shared";
 import { WorkspaceManager } from "./workspace";
@@ -11,6 +12,14 @@ import { TaskManager } from "./tasks";
 import { ToolExecutor } from "./tools";
 import { SkillExecutor } from "./skills";
 import { getOpenRouterModel } from "./openrouter";
+import { AgentLogger } from "./agent-logger";
+import {
+  isGraphitiEnabled,
+  enrichWithGraphiti,
+  formatContextForPrompt,
+  storeInteraction,
+  type EnrichedContext,
+} from "./graphiti";
 
 let agentInstance: AgentCore | null = null;
 
@@ -60,18 +69,101 @@ export class AgentCore {
     };
   }
 
-  async process(request: AgentRequest): Promise<AgentResponse> {
+  async process(
+    request: AgentRequest,
+  ): Promise<{ response: AgentResponse; trace: AgentExecutionTrace }> {
+    const logger = new AgentLogger();
     const startTime = Date.now();
-    await this.ensureWorkspace();
+
+    logger.info({
+      type: "request_received",
+      channel: request.channel,
+      messagePreview: request.message.slice(0, 100),
+    });
+
+    const workspaceExists = await this.workspace.exists();
+    logger.debug({
+      type: "workspace_check",
+      exists: workspaceExists,
+      initialized: false,
+    });
+
+    if (!workspaceExists) {
+      await this.workspace.initialize();
+      logger.info({
+        type: "workspace_check",
+        exists: true,
+        initialized: true,
+      });
+    }
 
     const workspaceContext = await this.buildContext();
+    const activeTasks = await this.tasks.listTasks("active");
+
+    let hasPreferences = false;
+    try {
+      await this.workspace.readFile("context/preferences.md");
+      hasPreferences = true;
+    } catch {
+      hasPreferences = false;
+    }
+
+    logger.info({
+      type: "context_built",
+      taskCount: activeTasks.length,
+      hasPreferences,
+    });
+
+    let graphitiContext: EnrichedContext | null = null;
+    if (isGraphitiEnabled()) {
+      try {
+        graphitiContext = await enrichWithGraphiti(
+          request.message,
+          "default-user",
+          {
+            numResults: 10,
+            includePatterns: true,
+            includePreferences: true,
+          },
+        );
+        logger.debug({
+          type: "context_built",
+          taskCount: graphitiContext.facts.length,
+          hasPreferences: graphitiContext.preferences.length > 0,
+        });
+      } catch (error) {
+        logger.warn({
+          type: "error",
+          message: `Graphiti enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }
+
     const availableSkills = await this.skills.listSkills();
+    const userSkills = availableSkills.filter(
+      (s) => !s.name.startsWith("_meta/"),
+    );
+    const metaSkills = availableSkills.filter((s) =>
+      s.name.startsWith("_meta/"),
+    );
+
+    logger.info({
+      type: "skills_loaded",
+      count: userSkills.length,
+      metaSkillCount: metaSkills.length,
+    });
 
     const systemPrompt = this.buildSystemPrompt(
       workspaceContext,
       availableSkills,
       request.channel,
+      graphitiContext,
     );
+
+    logger.debug({
+      type: "system_prompt_built",
+      tokenEstimate: Math.ceil(systemPrompt.length / 4),
+    });
 
     const anthropicTools = this.tools.getToolDefinitions();
     const openaiTools = anthropicTools.map((t) => this.convertToolToOpenAI(t));
@@ -87,19 +179,42 @@ export class AgentCore {
       },
     ];
 
+    const model = getOpenRouterModel();
+    logger.info({
+      type: "llm_request_start",
+      model,
+      messageCount: messages.length + 1,
+    });
+
     let response = await this.client.chat.completions.create({
-      model: getOpenRouterModel(),
+      model,
       max_completion_tokens: CLAUDE_CONFIG.maxTokens,
       messages: [{ role: "system", content: systemPrompt }, ...messages],
       tools: openaiTools,
     });
 
-    const choice = response.choices[0];
-    totalTokens += response.usage?.prompt_tokens || 0;
-    totalTokens += response.usage?.completion_tokens || 0;
+    const promptTokens = response.usage?.prompt_tokens || 0;
+    const completionTokens = response.usage?.completion_tokens || 0;
+    totalTokens += promptTokens + completionTokens;
+
+    logger.info({
+      type: "llm_request_complete",
+      promptTokens,
+      completionTokens,
+      finishReason: response.choices[0]?.finish_reason || "unknown",
+    });
+
+    let choice = response.choices[0];
+    let iterationNumber = 1;
 
     while (choice.finish_reason === "tool_calls") {
       const toolCalls = choice.message.tool_calls || [];
+
+      logger.debug({
+        type: "iteration_complete",
+        iterationNumber,
+        hasMoreToolCalls: toolCalls.length > 0,
+      });
 
       const toolResults: OpenAI.Chat.ChatCompletionToolMessageParam[] = [];
 
@@ -110,27 +225,57 @@ export class AgentCore {
           }
         ).function;
 
+        const parsedArgs = JSON.parse(functionCall.arguments);
+
+        logger.info({
+          type: "tool_call_start",
+          toolName: functionCall.name,
+          args: parsedArgs,
+        });
+
         try {
           const result = await this.tools.execute(
             functionCall.name,
-            JSON.parse(functionCall.arguments),
+            parsedArgs,
           );
           actions.push(result.action);
 
           if (result.action.type === "skill_executed") {
             skillsExecuted.push(result.action.skill);
+            logger.info({
+              type: "skill_execution_complete",
+              skillName: result.action.skill,
+              success: true,
+            });
           }
+
+          const resultStr = JSON.stringify(result.result);
+          logger.info({
+            type: "tool_call_complete",
+            toolName: functionCall.name,
+            success: true,
+            resultPreview: resultStr.slice(0, 200),
+          });
 
           toolResults.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: JSON.stringify(result.result),
+            content: resultStr,
           });
         } catch (error) {
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
+
+          logger.error({
+            type: "tool_call_error",
+            toolName: functionCall.name,
+            error: errorMsg,
+          });
+
           toolResults.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            content: `Error: ${errorMsg}`,
           });
         }
       }
@@ -140,43 +285,86 @@ export class AgentCore {
       );
       messages.push(...toolResults);
 
+      logger.info({
+        type: "llm_request_start",
+        model,
+        messageCount: messages.length + 1,
+      });
+
       response = await this.client.chat.completions.create({
-        model: getOpenRouterModel(),
+        model,
         max_completion_tokens: CLAUDE_CONFIG.maxTokens,
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools: openaiTools,
       });
 
-      const newChoice = response.choices[0];
-      totalTokens += response.usage?.prompt_tokens || 0;
-      totalTokens += response.usage?.completion_tokens || 0;
+      const iterPromptTokens = response.usage?.prompt_tokens || 0;
+      const iterCompletionTokens = response.usage?.completion_tokens || 0;
+      totalTokens += iterPromptTokens + iterCompletionTokens;
+
+      logger.info({
+        type: "llm_request_complete",
+        promptTokens: iterPromptTokens,
+        completionTokens: iterCompletionTokens,
+        finishReason: response.choices[0]?.finish_reason || "unknown",
+      });
+
+      choice = response.choices[0];
+      iterationNumber++;
 
       if (
-        newChoice.finish_reason === "stop" ||
-        newChoice.finish_reason === "length"
+        choice.finish_reason === "stop" ||
+        choice.finish_reason === "length"
       ) {
-        return {
-          success: true,
-          message: newChoice.message.content || "Done!",
-          actions,
-          metadata: {
-            tokensUsed: totalTokens,
-            processingTimeMs: Date.now() - startTime,
-            skillsExecuted,
-          },
-        };
+        break;
       }
     }
 
-    return {
+    const finalMessage = choice.message.content || "Done!";
+
+    logger.info({
+      type: "response_generated",
+      messageLength: finalMessage.length,
+      actionCount: actions.length,
+    });
+
+    const agentResponse: AgentResponse = {
       success: true,
-      message: choice.message.content || "Done!",
+      message: finalMessage,
       actions,
       metadata: {
         tokensUsed: totalTokens,
         processingTimeMs: Date.now() - startTime,
         skillsExecuted,
       },
+    };
+
+    if (isGraphitiEnabled()) {
+      storeInteraction(
+        "default-user",
+        request.channel,
+        request.message,
+        finalMessage,
+        {
+          skillsExecuted,
+          tasksCreated: actions
+            .filter((a) => a.type === "task_created")
+            .map((a) => (a as { taskId: string }).taskId),
+          tasksCompleted: actions
+            .filter((a) => a.type === "task_completed")
+            .map((a) => (a as { taskId: string }).taskId),
+        },
+      ).catch((error) => {
+        logger.warn({
+          type: "error",
+          message: `Graphiti storage failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      });
+    }
+
+    return {
+      response: agentResponse,
+      trace: logger.getTrace(),
     };
   }
 
@@ -218,6 +406,7 @@ ${preferences}`;
     workspaceContext: string,
     skills: { name: string; description?: string }[],
     channel: Channel,
+    graphitiContext?: EnrichedContext | null,
   ): string {
     const channelGuidance =
       channel === "sms"
@@ -234,6 +423,7 @@ Help Taylor manage tasks through natural conversation. You operate on a file-bas
 
 ## Current Workspace State
 ${workspaceContext}
+${graphitiContext ? `\n## Knowledge Graph Context\n${formatContextForPrompt(graphitiContext)}` : ""}
 
 ## Available Skills
 ${userSkills.map((s) => `- ${s.name}: ${s.description ?? "No description"}`).join("\n")}

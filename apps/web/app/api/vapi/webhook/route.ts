@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const agentResponse = await processWithAgent({
+    const { response: agentResponse } = await processWithAgent({
       channel: "sms",
       message: messageContent,
       context: { phoneNumber },

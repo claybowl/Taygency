@@ -166,3 +166,58 @@ export interface FileChange {
   operation: "create" | "update" | "delete";
   timestamp: string;
 }
+
+export type AgentLogLevel = "debug" | "info" | "warn" | "error";
+
+export type AgentLogEvent =
+  | { type: "request_received"; channel: Channel; messagePreview: string }
+  | { type: "workspace_check"; exists: boolean; initialized: boolean }
+  | { type: "context_built"; taskCount: number; hasPreferences: boolean }
+  | { type: "skills_loaded"; count: number; metaSkillCount: number }
+  | { type: "system_prompt_built"; tokenEstimate: number }
+  | { type: "llm_request_start"; model: string; messageCount: number }
+  | {
+      type: "llm_request_complete";
+      promptTokens: number;
+      completionTokens: number;
+      finishReason: string;
+    }
+  | { type: "tool_call_start"; toolName: string; args: Record<string, unknown> }
+  | {
+      type: "tool_call_complete";
+      toolName: string;
+      success: boolean;
+      resultPreview: string;
+    }
+  | { type: "tool_call_error"; toolName: string; error: string }
+  | { type: "skill_execution_start"; skillName: string }
+  | { type: "skill_execution_complete"; skillName: string; success: boolean }
+  | {
+      type: "iteration_complete";
+      iterationNumber: number;
+      hasMoreToolCalls: boolean;
+    }
+  | { type: "response_generated"; messageLength: number; actionCount: number }
+  | { type: "error"; message: string; stack?: string };
+
+export interface AgentLogEntry {
+  id: string;
+  timestamp: string;
+  level: AgentLogLevel;
+  event: AgentLogEvent;
+  durationMs?: number;
+}
+
+export interface AgentExecutionTrace {
+  traceId: string;
+  startTime: string;
+  endTime?: string;
+  logs: AgentLogEntry[];
+  summary?: {
+    totalDurationMs: number;
+    llmCalls: number;
+    toolCalls: number;
+    tokensUsed: number;
+    success: boolean;
+  };
+}

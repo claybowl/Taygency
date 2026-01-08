@@ -4,6 +4,71 @@ Welcome to Vibe Planning - your AI assistant that lives in your inbox and respon
 
 ---
 
+## For Developers: Getting Started
+
+### Starting the Development Server
+
+1. **Install dependencies** (first time only):
+
+   ```bash
+   npm install
+   ```
+
+2. **Start the development server**:
+
+   ```bash
+   npm run dev
+   ```
+
+3. **Access the application**:
+   - Open your browser and go to: **http://localhost:3000**
+
+The development server uses Next.js and runs on port 3000 by default. The server supports hot reloading, so changes you make to the code will automatically refresh in your browser.
+
+### Accessing the Dashboard
+
+The Dashboard provides a visual interface for managing tasks and monitoring the AI agent:
+
+1. Start the development server (see above)
+2. Open your browser to: **http://localhost:3000/dashboard**
+3. Or click the "Dashboard" button in the top-right corner of the landing page
+
+**Dashboard Features:**
+
+- **Overview** - System stats, activity feed, and task distribution charts
+- **Tasks** - View, filter, and manage all tasks (active, completed, someday)
+- **Skills** - Browse available AI agent capabilities
+- **Files** - Explore the file-based data structure (config, preferences, patterns)
+- **Logs** - System event logs and debugging information
+- **Context** - Learned patterns and user preferences
+- **Simulator** - Test the AI agent (see below)
+
+### Using the Agent Simulator
+
+The Simulator lets you test how the AI agent processes messages without needing email or SMS integration set up:
+
+1. Start the development server and go to: **http://localhost:3000/dashboard**
+2. Click **"Simulator"** in the left sidebar navigation
+3. Configure your test message:
+   - **Channel**: Choose Email or SMS
+   - **From**: Enter a sender email (for email) or leave blank
+   - **Subject**: Enter an email subject (for email only)
+   - **Message Body**: Type your test message
+4. Click **"Dispatch Trigger"** to send the message to the AI agent
+5. View the response, including:
+   - The agent's reply message
+   - Metadata (tokens used, processing time, skills executed)
+   - Actions taken (tasks created, updated, etc.)
+   - Full execution trace with detailed logs
+
+**Quick Presets**: Use the preset buttons to quickly test common scenarios:
+
+- "Reschedule Meeting" - Test a meeting reschedule request
+- "New Task Request" - Test adding a new task
+- "Complex Conflict" - Test handling scheduling conflicts
+
+---
+
 ## Quick Start (2 Minutes)
 
 **Step 1: Send your first email**
@@ -194,13 +259,27 @@ All can be done from your phone right now!
 
 ### Web Dashboard: Your Overview
 
-Visit your dashboard to see all your tasks at a glance. The dashboard shows:
+Visit your dashboard at **vibeplan.com/dashboard** (or **http://localhost:3000/dashboard** for local development) to see all your tasks at a glance.
 
-- All active tasks organized by category
-- Your completed tasks
-- "Someday" items you're saving for later
+**What you'll see:**
 
-The dashboard is view-only - use email or text to make changes.
+- **Overview** - Quick stats showing active tasks, completed today, and recent activity
+- **Tasks** - All your tasks organized by status (active, completed, someday) with filtering
+- **Activity Feed** - Real-time updates showing incoming emails, outgoing SMS, and agent actions
+
+**Dashboard Navigation:**
+
+| Section       | What It Shows                                          |
+| ------------- | ------------------------------------------------------ |
+| **Overview**  | System stats, activity feed, task distribution chart   |
+| **Tasks**     | All tasks with filtering by active/completed/someday   |
+| **Skills**    | Available AI automation capabilities (24 skills)       |
+| **Files**     | Browse your data files (config, preferences, patterns) |
+| **Logs**      | System event stream and debugging info                 |
+| **Context**   | Learned patterns and user preferences                  |
+| **Simulator** | Test the AI agent with mock messages                   |
+
+The dashboard is currently view-only - use email or text to make changes.
 
 ---
 
@@ -445,6 +524,112 @@ Having trouble? Have a suggestion?
 - **Response time**: Usually within a few hours
 
 We're constantly improving based on your feedback. If something doesn't work the way you expect, let us know!
+
+---
+
+## Developer Reference
+
+### Quick Commands
+
+| Command              | Description                           |
+| -------------------- | ------------------------------------- |
+| `npm install`        | Install all dependencies              |
+| `npm run dev`        | Start development server on port 3000 |
+| `npm run build`      | Build for production                  |
+| `npm run lint`       | Run linting                           |
+| `npm run type-check` | Check TypeScript types                |
+
+### Key URLs (Development)
+
+| URL                                                    | Description                 |
+| ------------------------------------------------------ | --------------------------- |
+| http://localhost:3000                                  | Landing page                |
+| http://localhost:3000/dashboard                        | Full dashboard interface    |
+| http://localhost:3000/dashboard (then click Simulator) | Agent simulator for testing |
+
+### Project Structure
+
+```
+vibe-planning/
+├── apps/
+│   └── web/                 # Next.js web application
+│       ├── app/             # App router pages
+│       │   ├── page.tsx     # Landing page
+│       │   └── dashboard/   # Dashboard page
+│       ├── api/             # API routes
+│       │   ├── email/       # SendGrid webhook
+│       │   ├── vapi/        # VAPI SMS webhook
+│       │   ├── simulator/   # Agent simulator endpoint
+│       │   └── dashboard/   # Dashboard API
+│       └── lib/             # Core libraries
+├── packages/
+│   └── shared/              # Shared types and constants
+├── docs/                    # Documentation
+└── task-data/               # Sample task data and skills
+```
+
+### Environment Variables
+
+Create a `.env.local` file in `apps/web/` with:
+
+```bash
+# Required for AI features
+OPENROUTER_API_KEY=your-key-here
+
+# Optional: GitHub storage (for persistent task storage)
+GITHUB_TOKEN=your-github-token
+GITHUB_OWNER=your-username
+GITHUB_REPO=your-repo
+
+# Optional: SendGrid (for email)
+SENDGRID_API_KEY=your-sendgrid-key
+
+# Optional: Rate limiting
+UPSTASH_REDIS_REST_URL=your-upstash-url
+UPSTASH_REDIS_REST_TOKEN=your-upstash-token
+
+# Optional: Graphiti Knowledge Graph (for agent memory)
+GRAPHITI_URL=http://localhost:8000
+GRAPHITI_API_KEY=your-graphiti-key  # if authentication is enabled
+```
+
+### Setting Up Graphiti (Knowledge Graph)
+
+Graphiti provides long-term memory and context awareness for the AI agent. When enabled, it:
+
+- Remembers facts, preferences, and patterns across conversations
+- Extracts entities (people, projects, deadlines) automatically
+- Provides temporal awareness (when facts were true, how they changed)
+
+**Quick Start with Docker:**
+
+```bash
+# Clone Graphiti
+git clone https://github.com/getzep/graphiti.git
+cd graphiti
+
+# Start with Docker Compose (includes Neo4j)
+docker-compose up -d
+
+# The server will be available at http://localhost:8000
+```
+
+**Environment Setup:**
+
+Add to your `.env.local`:
+
+```bash
+GRAPHITI_URL=http://localhost:8000
+```
+
+**Skills Added:**
+
+- `memory/remember` - Explicitly store facts and preferences
+- `memory/recall` - Query past context before responding
+- `memory/patterns` - Detect behavioral patterns over time
+- `_meta/memory-enricher` - Auto-extract entities from every message
+
+The agent will automatically use Graphiti when `GRAPHITI_URL` is set. Without it, the agent works normally but without persistent memory across sessions.
 
 ---
 

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { AgentResponse, AgentAction } from "@vibe-planning/shared";
+import type {
+  AgentResponse,
+  AgentAction,
+  AgentExecutionTrace,
+  AgentLogEntry,
+} from "@vibe-planning/shared";
 
 interface SimulatorRequest {
   channel: "email" | "sms";
@@ -8,6 +13,63 @@ interface SimulatorRequest {
     from?: string;
     subject?: string;
     phoneNumber?: string;
+  };
+}
+
+function createMockTrace(
+  channel: string,
+  message: string,
+): AgentExecutionTrace {
+  const now = new Date();
+  const traceId = `mock-trace-${Date.now()}`;
+
+  const logs: AgentLogEntry[] = [
+    {
+      id: `log-${Date.now()}-1`,
+      timestamp: now.toISOString(),
+      level: "info",
+      event: {
+        type: "request_received",
+        channel: channel as "email" | "sms",
+        messagePreview: message.slice(0, 100),
+      },
+      durationMs: 0,
+    },
+    {
+      id: `log-${Date.now()}-2`,
+      timestamp: new Date(now.getTime() + 10).toISOString(),
+      level: "warn",
+      event: {
+        type: "error",
+        message: "GitHub credentials not configured - using mock response",
+      },
+      durationMs: 10,
+    },
+    {
+      id: `log-${Date.now()}-3`,
+      timestamp: new Date(now.getTime() + 50).toISOString(),
+      level: "info",
+      event: {
+        type: "response_generated",
+        messageLength: 150,
+        actionCount: 0,
+      },
+      durationMs: 40,
+    },
+  ];
+
+  return {
+    traceId,
+    startTime: now.toISOString(),
+    endTime: new Date(now.getTime() + 50).toISOString(),
+    logs,
+    summary: {
+      totalDurationMs: 50,
+      llmCalls: 0,
+      toolCalls: 0,
+      tokensUsed: 0,
+      success: false,
+    },
   };
 }
 
@@ -33,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const { processWithAgent } = await import("@/lib/agent");
-      const agentResponse = await processWithAgent({
+      const { response: agentResponse, trace } = await processWithAgent({
         channel,
         message,
         context: {
@@ -45,17 +107,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         response: agentResponse,
+        trace,
       });
     } catch (agentError) {
       console.warn(
         "[Simulator] Agent failed, using mock response:",
         agentError,
       );
-      // Return a mock response when agent fails (e.g., no GitHub credentials)
       const mockResponse = getMockResponse(channel, message);
+      const mockTrace = createMockTrace(channel, message);
+
       return NextResponse.json({
         success: true,
         response: mockResponse,
+        trace: mockTrace,
         mock: true,
       });
     }
