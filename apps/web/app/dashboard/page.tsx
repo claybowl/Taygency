@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, CSSProperties } from "react";
+import * as d3 from "d3-force";
 import type {
   Task,
   TasksResponse,
@@ -55,6 +56,19 @@ export default function DashboardPage() {
   const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
   const [memoryData, setMemoryData] = useState<MemoryResponse | null>(null);
   const [memoryLoading, setMemoryLoading] = useState(false);
+
+  const [activityFeed, setActivityFeed] = useState<
+    Array<{
+      id: string;
+      type: "email" | "sms" | "task" | "system" | "skill";
+      channel: string;
+      preview: string;
+      timestamp: string;
+    }>
+  >([]);
+  const [lastActivityAt, setLastActivityAt] = useState<string | null>(null);
+  const [greeting, setGreeting] = useState<string>("");
+  const [greetingLoading, setGreetingLoading] = useState(true);
 
   // Form state for simulator
   const [simChannel, setSimChannel] = useState<"email" | "sms">("email");
@@ -114,14 +128,50 @@ export default function DashboardPage() {
         setError(null);
       } catch (err) {
         console.warn("[Dashboard] API unavailable, using mock data:", err);
-        // Use mock data when API fails (e.g., no GitHub token)
         setTasks(mockTasks);
-        setError(null); // Don't show error, just use mock data
+        setError(null);
       } finally {
         setLoading(false);
       }
     }
     fetchTasks();
+  }, []);
+
+  useEffect(() => {
+    async function fetchActivity() {
+      try {
+        const res = await fetch("/api/dashboard/activity");
+        if (res.ok) {
+          const data = await res.json();
+          setActivityFeed(data.activities || []);
+          setLastActivityAt(data.lastActivityAt);
+        }
+      } catch (err) {
+        console.warn("[Dashboard] Activity feed unavailable:", err);
+      }
+    }
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    async function fetchGreeting() {
+      setGreetingLoading(true);
+      try {
+        const res = await fetch("/api/dashboard/greeting");
+        if (res.ok) {
+          const data = await res.json();
+          setGreeting(data.message);
+        }
+      } catch (err) {
+        console.warn("[Dashboard] Greeting unavailable:", err);
+        setGreeting("Welcome back! Let's make today productive. 🚀");
+      } finally {
+        setGreetingLoading(false);
+      }
+    }
+    fetchGreeting();
   }, []);
 
   // Bar chart animation on mount
@@ -218,6 +268,82 @@ export default function DashboardPage() {
     return "low";
   };
 
+  const formatRelativeTime = (timestamp: string | null): string => {
+    if (!timestamp) return "No activity yet";
+    const now = new Date();
+    const then = new Date(timestamp);
+    const diffMs = now.getTime() - then.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHr / 24);
+
+    if (diffSec < 60) return `${diffSec}s ago`;
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  const formatActivityTime = (timestamp: string): string => {
+    return new Date(timestamp).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  };
+
+  const getActivityIcon = (type: string): string => {
+    switch (type) {
+      case "email":
+        return "E";
+      case "sms":
+        return "S";
+      case "task":
+        return "T";
+      case "skill":
+        return "⚡";
+      default:
+        return "⚙";
+    }
+  };
+
+  const getActivityIconType = (type: string): "email" | "sms" | "system" => {
+    if (type === "email") return "email";
+    if (type === "sms") return "sms";
+    return "system";
+  };
+
+  const taskCategories = tasks.reduce(
+    (acc, task) => {
+      const cat = task.category || "Other";
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const categoryData = Object.entries(taskCategories)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  const maxCategoryCount = Math.max(
+    ...categoryData.map(([, count]) => count),
+    1,
+  );
+
+  const priorityCounts = {
+    high: tasks.filter((t) => t.priority === "high" && t.status === "active")
+      .length,
+    medium: tasks.filter(
+      (t) => t.priority === "medium" && t.status === "active",
+    ).length,
+    low: tasks.filter((t) => t.priority === "low" && t.status === "active")
+      .length,
+  };
+  const totalPriority =
+    priorityCounts.high + priorityCounts.medium + priorityCounts.low || 1;
+
   const fileContents: Record<string, string> = {
     "config.json": `{
   "agent_id": "vibe-planning-01",
@@ -284,7 +410,7 @@ export default function DashboardPage() {
       <aside style={styles.aside}>
         <div style={styles.logo}>
           <div style={styles.logoMark} />
-          <span>Vibe Planning</span>
+          <span>Agent Organizer</span>
         </div>
         <nav style={styles.nav}>
           <ul style={styles.navList}>
@@ -359,6 +485,20 @@ export default function DashboardPage() {
               </p>
             </div>
 
+            {/* Agent Greeting */}
+            <div style={styles.greetingBox}>
+              <div style={styles.greetingIcon}>✨</div>
+              <div style={styles.greetingContent}>
+                {greetingLoading ? (
+                  <span style={styles.greetingLoading}>
+                    Thinking of something nice to say...
+                  </span>
+                ) : (
+                  <span style={styles.greetingText}>{greeting}</span>
+                )}
+              </div>
+            </div>
+
             <div style={styles.statsGrid}>
               <StatCard
                 label="Active Tasks"
@@ -375,7 +515,11 @@ export default function DashboardPage() {
                 subValue="/ 8 meta"
                 hatch
               />
-              <StatCard label="Last Activity" value="2m 14s ago" small />
+              <StatCard
+                label="Last Activity"
+                value={formatRelativeTime(lastActivityAt)}
+                small
+              />
             </div>
 
             <div style={styles.dashboardContent}>
@@ -383,31 +527,37 @@ export default function DashboardPage() {
               <div style={styles.sectionBox}>
                 <div style={styles.sectionHeader}>
                   <span style={styles.sectionTitle}>Recent Activity Feed</span>
-                  <span style={styles.activityTime}>Live Sync Active</span>
+                  <span style={styles.activityTime}>
+                    {activityFeed.length > 0
+                      ? "Live Sync Active"
+                      : "Awaiting Activity"}
+                  </span>
                 </div>
-                <ul style={styles.activityFeed}>
-                  <ActivityItem
-                    icon="E"
-                    iconType="email"
-                    channel="incoming_email"
-                    time="14:02:11"
-                    preview='"Can we reschedule the sync to 4 PM? Check my availability..."'
-                  />
-                  <ActivityItem
-                    icon="S"
-                    iconType="sms"
-                    channel="outgoing_sms"
-                    time="13:58:45"
-                    preview='"Your grocery list has been updated. Reminder: Milk."'
-                  />
-                  <ActivityItem
-                    icon="⚙"
-                    iconType="system"
-                    channel="skill_executed"
-                    time="13:45:02"
-                    preview="Pattern recognized: Preference for morning meetings (95% confidence)."
-                    isLast
-                  />
+                <ul style={styles.activityFeedList}>
+                  {activityFeed.length > 0 ? (
+                    activityFeed
+                      .slice(0, 5)
+                      .map((activity, index) => (
+                        <ActivityItem
+                          key={activity.id}
+                          icon={getActivityIcon(activity.type)}
+                          iconType={getActivityIconType(activity.type)}
+                          channel={activity.channel}
+                          time={formatActivityTime(activity.timestamp)}
+                          preview={activity.preview}
+                          isLast={
+                            index === Math.min(activityFeed.length, 5) - 1
+                          }
+                        />
+                      ))
+                  ) : (
+                    <li style={styles.emptyActivity}>
+                      <span style={styles.emptyActivityIcon}>📭</span>
+                      <span>
+                        No recent activity. Send an email or SMS to get started!
+                      </span>
+                    </li>
+                  )}
                 </ul>
               </div>
 
@@ -417,10 +567,23 @@ export default function DashboardPage() {
                   <span style={styles.sectionTitle}>Task Distribution</span>
                 </div>
                 <div style={styles.chartPlaceholder}>
-                  <Bar height={barsAnimated ? 80 : 0} label="Work" />
-                  <Bar height={barsAnimated ? 40 : 0} label="Life" />
-                  <Bar height={barsAnimated ? 60 : 0} label="Agent" />
-                  <Bar height={barsAnimated ? 25 : 0} label="Other" />
+                  {categoryData.length > 0 ? (
+                    categoryData.map(([category, count]) => (
+                      <Bar
+                        key={category}
+                        height={
+                          barsAnimated
+                            ? Math.max(20, (count / maxCategoryCount) * 80)
+                            : 0
+                        }
+                        label={category}
+                      />
+                    ))
+                  ) : (
+                    <>
+                      <Bar height={barsAnimated ? 20 : 0} label="No tasks" />
+                    </>
+                  )}
                 </div>
                 <div style={styles.priorityRatioContainer}>
                   <div style={styles.statLabel}>Priority Ratio</div>
@@ -428,24 +591,38 @@ export default function DashboardPage() {
                     <div
                       style={{
                         ...styles.prioritySegment,
-                        width: "20%",
+                        width: `${(priorityCounts.high / totalPriority) * 100}%`,
                         background: COLORS.danger,
                       }}
+                      title={`High: ${priorityCounts.high}`}
                     />
                     <div
                       style={{
                         ...styles.prioritySegment,
-                        width: "50%",
+                        width: `${(priorityCounts.medium / totalPriority) * 100}%`,
                         background: COLORS.warning,
                       }}
+                      title={`Medium: ${priorityCounts.medium}`}
                     />
                     <div
                       style={{
                         ...styles.prioritySegment,
-                        width: "30%",
+                        width: `${(priorityCounts.low / totalPriority) * 100}%`,
                         background: COLORS.success,
                       }}
+                      title={`Low: ${priorityCounts.low}`}
                     />
+                  </div>
+                  <div style={styles.priorityLabels}>
+                    <span style={{ color: COLORS.danger }}>
+                      ● High ({priorityCounts.high})
+                    </span>
+                    <span style={{ color: COLORS.warning }}>
+                      ● Med ({priorityCounts.medium})
+                    </span>
+                    <span style={{ color: COLORS.success }}>
+                      ● Low ({priorityCounts.low})
+                    </span>
                   </div>
                 </div>
               </div>
@@ -612,156 +789,7 @@ export default function DashboardPage() {
 
         {/* Memory Page */}
         {currentPage === "memory" && (
-          <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Knowledge Graph</h1>
-              <p style={styles.pageSubtitle}>
-                Graphiti-powered episodic memory and entity relationships.
-              </p>
-            </div>
-
-            {memoryLoading ? (
-              <div style={styles.placeholderBox}>
-                <div style={styles.loadingSpinner} />
-                <p style={styles.placeholderText}>Loading memory data...</p>
-              </div>
-            ) : !memoryData?.enabled ? (
-              <div style={styles.placeholderBox}>
-                <div style={styles.placeholderIcon}>🔌</div>
-                <p style={styles.placeholderText}>Graphiti not configured</p>
-                <p style={styles.placeholderSubtext}>
-                  Set NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD to enable the
-                  knowledge graph.
-                </p>
-              </div>
-            ) : !memoryData?.healthy ? (
-              <div style={styles.placeholderBox}>
-                <div style={styles.placeholderIcon}>⚠️</div>
-                <p style={styles.placeholderText}>Graphiti connection failed</p>
-                <p style={styles.placeholderSubtext}>
-                  Check Neo4j database status and credentials.
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Memory Stats */}
-                <div style={styles.statsGrid}>
-                  <StatCard
-                    label="Total Facts"
-                    value={memoryData.stats.totalFacts.toString()}
-                    hatch
-                  />
-                  <StatCard
-                    label="Total Entities"
-                    value={memoryData.stats.totalEntities.toString()}
-                  />
-                  <StatCard
-                    label="Recent (24h)"
-                    value={memoryData.stats.recentFacts.toString()}
-                    hatch
-                  />
-                  <StatCard
-                    label="Patterns"
-                    value={memoryData.stats.patterns.toString()}
-                    subValue={`/ ${memoryData.stats.preferences} prefs`}
-                  />
-                </div>
-
-                <div style={styles.dashboardContent}>
-                  {/* Knowledge Graph Visualization */}
-                  <div style={{ ...styles.sectionBox, minHeight: "450px" }}>
-                    <div style={styles.sectionHeader}>
-                      <span style={styles.sectionTitle}>
-                        Entity Relationship Graph
-                      </span>
-                      <span style={styles.activityTime}>
-                        {memoryData.graph.nodes.length} nodes •{" "}
-                        {memoryData.graph.edges.length} edges
-                      </span>
-                    </div>
-                    {memoryData.graph.nodes.length === 0 ? (
-                      <div
-                        style={{
-                          padding: "3rem",
-                          textAlign: "center" as const,
-                          color: COLORS.muted,
-                        }}
-                      >
-                        <p>No entities in the graph yet.</p>
-                        <p style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
-                          Facts will appear here as the agent learns from
-                          interactions.
-                        </p>
-                      </div>
-                    ) : (
-                      <KnowledgeGraph
-                        nodes={memoryData.graph.nodes}
-                        edges={memoryData.graph.edges}
-                      />
-                    )}
-                  </div>
-
-                  {/* Recent Facts List */}
-                  <div style={styles.sectionBox}>
-                    <div style={styles.sectionHeader}>
-                      <span style={styles.sectionTitle}>Recent Facts</span>
-                    </div>
-                    {memoryData.recentFacts.length === 0 ? (
-                      <div
-                        style={{
-                          padding: "2rem",
-                          textAlign: "center" as const,
-                          color: COLORS.muted,
-                        }}
-                      >
-                        <p>No facts recorded yet.</p>
-                      </div>
-                    ) : (
-                      <ul style={styles.activityFeed}>
-                        {memoryData.recentFacts
-                          .slice(0, 8)
-                          .map((fact, index) => (
-                            <li
-                              key={index}
-                              style={{
-                                ...styles.activityItem,
-                                ...(index ===
-                                Math.min(7, memoryData.recentFacts.length - 1)
-                                  ? { borderBottom: "none" }
-                                  : {}),
-                              }}
-                            >
-                              <div style={memoryStyles.factIcon}>
-                                <span style={memoryStyles.factIconInner}>
-                                  F
-                                </span>
-                              </div>
-                              <div style={styles.activityContent}>
-                                <div style={styles.activityMeta}>
-                                  <span style={memoryStyles.factScore}>
-                                    {(fact.score * 100).toFixed(0)}% confidence
-                                  </span>
-                                  {fact.validAt && (
-                                    <span style={styles.activityTime}>
-                                      {new Date(
-                                        fact.validAt,
-                                      ).toLocaleDateString()}
-                                    </span>
-                                  )}
-                                </div>
-                                <p style={styles.activityPreview}>
-                                  {fact.fact}
-                                </p>
-                              </div>
-                            </li>
-                          ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </section>
+          <MemoryPage memoryLoading={memoryLoading} memoryData={memoryData} />
         )}
 
         {/* Simulator Page */}
@@ -1092,6 +1120,535 @@ const NODE_TYPE_COLORS: Record<string, string> = {
   default: "#6b7280",
 };
 
+// Memory Page Component - Immersive Knowledge Graph Experience
+function MemoryPage({
+  memoryLoading,
+  memoryData,
+}: {
+  memoryLoading: boolean;
+  memoryData: MemoryResponse | null;
+}) {
+  const [factsExpanded, setFactsExpanded] = useState(false);
+
+  if (memoryLoading) {
+    return (
+      <section style={memoryPageStyles.fullSection}>
+        <div style={memoryPageStyles.loadingState}>
+          <div style={styles.loadingSpinner} />
+          <p style={styles.placeholderText}>Loading memory data...</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!memoryData?.enabled) {
+    return (
+      <section style={memoryPageStyles.fullSection}>
+        <div style={memoryPageStyles.disabledState}>
+          <div style={memoryPageStyles.disabledIcon}>
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+              <circle
+                cx="32"
+                cy="32"
+                r="28"
+                stroke="#374151"
+                strokeWidth="2"
+                strokeDasharray="6 4"
+              />
+              <path
+                d="M24 24L40 40M40 24L24 40"
+                stroke="#6b7280"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+          <h2 style={memoryPageStyles.disabledTitle}>
+            Graphiti Not Configured
+          </h2>
+          <p style={memoryPageStyles.disabledText}>
+            Set NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD environment variables
+            to enable the knowledge graph.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!memoryData?.healthy) {
+    return (
+      <section style={memoryPageStyles.fullSection}>
+        <div style={memoryPageStyles.disabledState}>
+          <div style={memoryPageStyles.disabledIcon}>
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+              <circle
+                cx="32"
+                cy="32"
+                r="28"
+                stroke="#dc2626"
+                strokeWidth="2"
+                opacity="0.5"
+              />
+              <path
+                d="M32 20V36M32 42V44"
+                stroke="#dc2626"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+          <h2 style={memoryPageStyles.disabledTitle}>Connection Failed</h2>
+          <p style={memoryPageStyles.disabledText}>
+            Check Neo4j database status and credentials.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section style={memoryPageStyles.fullSection}>
+      {/* Ambient Background */}
+      <div style={memoryPageStyles.ambientBg} />
+
+      {/* Compact Stats Bar */}
+      <div style={memoryPageStyles.compactStatsBar}>
+        <div style={memoryPageStyles.titleArea}>
+          <h1 style={memoryPageStyles.pageTitle}>Knowledge Graph</h1>
+          <span style={memoryPageStyles.statusBadge}>
+            <span style={memoryPageStyles.statusDot} />
+            Connected
+          </span>
+        </div>
+        <div style={memoryPageStyles.statsRow}>
+          <CompactStat
+            label="Facts"
+            value={memoryData.stats.totalFacts}
+            accent
+          />
+          <CompactStat
+            label="Entities"
+            value={memoryData.stats.totalEntities}
+          />
+          <CompactStat
+            label="Recent 24h"
+            value={memoryData.stats.recentFacts}
+          />
+          <CompactStat label="Patterns" value={memoryData.stats.patterns} />
+          <CompactStat
+            label="Preferences"
+            value={memoryData.stats.preferences}
+          />
+        </div>
+      </div>
+
+      {/* Hero Graph Container */}
+      <div style={memoryPageStyles.heroGraphContainer}>
+        {memoryData.graph.nodes.length === 0 ? (
+          <div style={memoryPageStyles.emptyGraph}>
+            <svg
+              width="120"
+              height="120"
+              viewBox="0 0 120 120"
+              fill="none"
+              style={{ opacity: 0.4 }}
+            >
+              <circle cx="40" cy="40" r="12" stroke="#6366f1" strokeWidth="2" />
+              <circle cx="80" cy="35" r="10" stroke="#22c55e" strokeWidth="2" />
+              <circle cx="60" cy="80" r="14" stroke="#8b5cf6" strokeWidth="2" />
+              <line
+                x1="50"
+                y1="45"
+                x2="72"
+                y2="40"
+                stroke="#e5e7eb"
+                strokeWidth="1.5"
+              />
+              <line
+                x1="45"
+                y1="50"
+                x2="55"
+                y2="70"
+                stroke="#e5e7eb"
+                strokeWidth="1.5"
+              />
+              <line
+                x1="75"
+                y1="45"
+                x2="68"
+                y2="68"
+                stroke="#e5e7eb"
+                strokeWidth="1.5"
+              />
+            </svg>
+            <p style={memoryPageStyles.emptyTitle}>
+              No entities in the graph yet
+            </p>
+            <p style={memoryPageStyles.emptySubtitle}>
+              Facts will appear here as the agent learns from interactions
+            </p>
+          </div>
+        ) : (
+          <KnowledgeGraph
+            nodes={memoryData.graph.nodes}
+            edges={memoryData.graph.edges}
+          />
+        )}
+      </div>
+
+      {/* Collapsible Facts Panel */}
+      <div
+        style={{
+          ...memoryPageStyles.factsPanel,
+          ...(factsExpanded ? memoryPageStyles.factsPanelExpanded : {}),
+        }}
+      >
+        <div
+          style={memoryPageStyles.factsPanelHeader}
+          onClick={() => setFactsExpanded(!factsExpanded)}
+        >
+          <div style={memoryPageStyles.factsPanelTitle}>
+            <span style={memoryPageStyles.factsPanelIcon}>
+              {factsExpanded ? "▼" : "▲"}
+            </span>
+            Recent Facts
+            <span style={memoryPageStyles.factsBadge}>
+              {memoryData.recentFacts.length}
+            </span>
+          </div>
+          <span style={memoryPageStyles.factsPanelHint}>
+            {factsExpanded ? "Click to collapse" : "Click to expand"}
+          </span>
+        </div>
+
+        {factsExpanded && (
+          <div style={memoryPageStyles.factsContent}>
+            {memoryData.recentFacts.length === 0 ? (
+              <p style={memoryPageStyles.noFacts}>No facts recorded yet.</p>
+            ) : (
+              <div style={memoryPageStyles.factsGrid}>
+                {memoryData.recentFacts.slice(0, 12).map((fact, index) => (
+                  <div key={index} style={memoryPageStyles.factCard}>
+                    <div style={memoryPageStyles.factCardHeader}>
+                      <span style={memoryPageStyles.factConfidence}>
+                        {(fact.score * 100).toFixed(0)}%
+                      </span>
+                      {fact.validAt && (
+                        <span style={memoryPageStyles.factDate}>
+                          {new Date(fact.validAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <p style={memoryPageStyles.factText}>{fact.fact}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Compact Stat Component for the stats bar
+function CompactStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+}) {
+  return (
+    <div style={memoryPageStyles.compactStat}>
+      <span
+        style={{
+          ...memoryPageStyles.compactStatValue,
+          ...(accent ? { color: COLORS.accent } : {}),
+        }}
+      >
+        {value.toLocaleString()}
+      </span>
+      <span style={memoryPageStyles.compactStatLabel}>{label}</span>
+    </div>
+  );
+}
+
+// Memory Page Styles
+const memoryPageStyles: Record<string, CSSProperties> = {
+  fullSection: {
+    position: "relative",
+    height: "calc(100vh - 4rem)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    margin: "-2rem -3rem",
+    padding: "0",
+    background: "#000",
+  },
+  ambientBg: {
+    position: "absolute",
+    inset: 0,
+    background: "radial-gradient(circle at center, #050a15 0%, #000 100%)",
+    zIndex: 0,
+    pointerEvents: "none",
+  },
+  loadingState: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1rem",
+    background: "radial-gradient(circle at center, #050a15 0%, #000 100%)",
+  },
+  disabledState: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1rem",
+    padding: "2rem",
+    background: "radial-gradient(circle at center, #050a15 0%, #000 100%)",
+  },
+  disabledIcon: {
+    marginBottom: "0.5rem",
+  },
+  disabledTitle: {
+    fontSize: "1.25rem",
+    fontWeight: 600,
+    color: "rgba(255, 255, 255, 0.8)",
+    fontFamily: "Georgia, serif",
+  },
+  disabledText: {
+    fontSize: "0.9rem",
+    color: "rgba(255, 255, 255, 0.5)",
+    textAlign: "center",
+    maxWidth: "400px",
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  compactStatsBar: {
+    position: "relative",
+    zIndex: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "1rem 2rem",
+    background: "rgba(0, 0, 0, 0.8)",
+    backdropFilter: "blur(12px)",
+    borderBottom: "1px solid rgba(100, 200, 255, 0.15)",
+  },
+  titleArea: {
+    display: "flex",
+    alignItems: "center",
+    gap: "1rem",
+  },
+  pageTitle: {
+    fontSize: "1.5rem",
+    fontWeight: 400,
+    letterSpacing: "0.05em",
+    color: "rgba(255, 255, 255, 0.9)",
+    margin: 0,
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  statusBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    fontSize: "0.7rem",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "#00ffff",
+    background: "rgba(0, 255, 255, 0.1)",
+    padding: "0.25rem 0.6rem",
+    borderRadius: "12px",
+    border: "1px solid rgba(0, 255, 255, 0.2)",
+  },
+  statusDot: {
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    background: "#00ffff",
+    boxShadow: "0 0 8px #00ffff",
+    animation: "pulse 2s ease-in-out infinite",
+  },
+  statsRow: {
+    display: "flex",
+    gap: "2rem",
+  },
+  compactStat: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+  },
+  compactStatValue: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "1.1rem",
+    fontWeight: 600,
+    color: "rgba(255, 255, 255, 0.9)",
+  },
+  compactStatLabel: {
+    fontSize: "0.65rem",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "rgba(255, 255, 255, 0.4)",
+  },
+  heroGraphContainer: {
+    position: "relative",
+    zIndex: 5,
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0",
+  },
+  emptyGraph: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "1rem",
+    padding: "3rem",
+  },
+  emptyTitle: {
+    fontSize: "1.1rem",
+    fontWeight: 400,
+    color: "rgba(255, 255, 255, 0.6)",
+    margin: 0,
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  emptySubtitle: {
+    fontSize: "0.85rem",
+    color: "rgba(255, 255, 255, 0.4)",
+    margin: 0,
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  factsPanel: {
+    position: "relative",
+    zIndex: 10,
+    background: "rgba(0, 0, 0, 0.9)",
+    backdropFilter: "blur(12px)",
+    borderTop: "1px solid rgba(100, 200, 255, 0.15)",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+  },
+  factsPanelExpanded: {
+    maxHeight: "280px",
+  },
+  factsPanelHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0.75rem 2rem",
+    cursor: "pointer",
+    userSelect: "none",
+    transition: "background 0.2s",
+  },
+  factsPanelTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.6rem",
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    color: "rgba(255, 255, 255, 0.8)",
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  factsPanelIcon: {
+    fontSize: "0.6rem",
+    color: "rgba(255, 255, 255, 0.4)",
+  },
+  factsBadge: {
+    fontSize: "0.7rem",
+    fontWeight: 600,
+    background: "rgba(0, 255, 255, 0.2)",
+    color: "#00ffff",
+    padding: "0.1rem 0.5rem",
+    borderRadius: "10px",
+    border: "1px solid rgba(0, 255, 255, 0.3)",
+  },
+  factsPanelHint: {
+    fontSize: "0.7rem",
+    color: "rgba(255, 255, 255, 0.4)",
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  factsContent: {
+    padding: "0 2rem 1.5rem",
+    maxHeight: "200px",
+    overflowY: "auto",
+  },
+  noFacts: {
+    textAlign: "center",
+    color: "rgba(255, 255, 255, 0.4)",
+    padding: "1rem",
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+  factsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gap: "0.75rem",
+  },
+  factCard: {
+    background: "rgba(255, 255, 255, 0.03)",
+    border: "1px solid rgba(100, 200, 255, 0.1)",
+    borderRadius: "6px",
+    padding: "0.75rem 1rem",
+    transition: "transform 0.2s, box-shadow 0.2s",
+  },
+  factCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "0.4rem",
+  },
+  factConfidence: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "0.75rem",
+    fontWeight: 600,
+    color: "#00ffff",
+  },
+  factDate: {
+    fontSize: "0.7rem",
+    color: "rgba(255, 255, 255, 0.4)",
+  },
+  factText: {
+    fontSize: "0.85rem",
+    color: "rgba(255, 255, 255, 0.7)",
+    lineHeight: 1.4,
+    margin: 0,
+    fontFamily: "Georgia, serif",
+    fontStyle: "italic",
+  },
+};
+
+// D3 simulation node type
+interface SimNode {
+  id: string;
+  label: string;
+  type: string;
+  x?: number;
+  y?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+
+interface SimLink {
+  source: string | SimNode;
+  target: string | SimNode;
+  id: string;
+  fact: string;
+}
+
 function KnowledgeGraph({
   nodes,
   edges,
@@ -1101,178 +1658,522 @@ function KnowledgeGraph({
 }) {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [draggedNode, setDraggedNode] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  const nodePositions = useRef<Map<string, { x: number; y: number }>>(
-    new Map(),
-  );
+  const [positions, setPositions] = useState<
+    Map<string, { x: number; y: number }>
+  >(new Map());
 
-  if (nodePositions.current.size !== nodes.length) {
-    nodePositions.current.clear();
-    const centerX = 300;
-    const centerY = 180;
-    const radiusX = 220;
-    const radiusY = 130;
+  const simulationRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
+  const simNodesRef = useRef<SimNode[]>([]);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-    nodes.forEach((node, i) => {
-      const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
-      const jitterX = (Math.random() - 0.5) * 30;
-      const jitterY = (Math.random() - 0.5) * 20;
-      nodePositions.current.set(node.id, {
-        x: centerX + radiusX * Math.cos(angle) + jitterX,
-        y: centerY + radiusY * Math.sin(angle) + jitterY,
-      });
+  const VIEW_WIDTH = 1600;
+  const VIEW_HEIGHT = 900;
+
+  // D3 force simulation setup
+  useEffect(() => {
+    if (nodes.length === 0) {
+      if (simulationRef.current) {
+        simulationRef.current.stop();
+        simulationRef.current = null;
+      }
+      return;
+    }
+
+    // Create simulation nodes with random initial positions spread across canvas
+    const simNodes: SimNode[] = nodes.map((node, i) => {
+      // Check if we have an existing position for this node
+      const existing = simNodesRef.current.find((n) => n.id === node.id);
+      if (existing && existing.x !== undefined && existing.y !== undefined) {
+        return { ...node, x: existing.x, y: existing.y };
+      }
+      // Spread initial positions randomly across the canvas
+      return {
+        ...node,
+        x: Math.random() * (VIEW_WIDTH - 160) + 80,
+        y: Math.random() * (VIEW_HEIGHT - 160) + 80,
+      };
     });
-  }
+
+    simNodesRef.current = simNodes;
+
+    // Create simulation links
+    const simLinks: SimLink[] = edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      id: edge.id,
+      fact: edge.fact,
+    }));
+
+    // Stop any existing simulation
+    if (simulationRef.current) {
+      simulationRef.current.stop();
+    }
+
+    // Create new D3 force simulation
+    const simulation = d3
+      .forceSimulation<SimNode>(simNodes)
+      .force(
+        "link",
+        d3
+          .forceLink<SimNode, SimLink>(simLinks)
+          .id((d) => d.id)
+          .distance(150)
+          .strength(0.5),
+      )
+      .force("charge", d3.forceManyBody().strength(-400).distanceMax(500))
+      .force("center", d3.forceCenter(VIEW_WIDTH / 2, VIEW_HEIGHT / 2))
+      .force("collide", d3.forceCollide<SimNode>().radius(50).strength(0.8))
+      .force("x", d3.forceX(VIEW_WIDTH / 2).strength(0.05))
+      .force("y", d3.forceY(VIEW_HEIGHT / 2).strength(0.05))
+      .alphaDecay(0.02)
+      .velocityDecay(0.4);
+
+    // Update positions on each tick
+    simulation.on("tick", () => {
+      const newPositions = new Map<string, { x: number; y: number }>();
+      simNodes.forEach((node) => {
+        // Clamp positions to bounds
+        const x = Math.max(
+          80,
+          Math.min(VIEW_WIDTH - 80, node.x ?? VIEW_WIDTH / 2),
+        );
+        const y = Math.max(
+          80,
+          Math.min(VIEW_HEIGHT - 80, node.y ?? VIEW_HEIGHT / 2),
+        );
+        node.x = x;
+        node.y = y;
+        newPositions.set(node.id, { x, y });
+      });
+      setPositions(newPositions);
+    });
+
+    simulationRef.current = simulation;
+
+    return () => {
+      simulation.stop();
+    };
+  }, [nodes.length, nodes.map((n) => n.id).join(","), edges.length]);
+
+  const getSVGPoint = (
+    e: React.MouseEvent<SVGElement> | MouseEvent,
+  ): { x: number; y: number } => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+
+    const rect = svg.getBoundingClientRect();
+    const scaleX = VIEW_WIDTH / rect.width / zoom;
+    const scaleY = VIEW_HEIGHT / rect.height / zoom;
+
+    return {
+      x: (e.clientX - rect.left) * scaleX - pan.x / zoom,
+      y: (e.clientY - rect.top) * scaleY - pan.y / zoom,
+    };
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.min(2.5, Math.max(0.5, zoom * delta));
+    setZoom(newZoom);
+  };
+
+  const handlePanStart = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (draggedNode) return;
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      setIsPanning(true);
+      panStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        panX: pan.x,
+        panY: pan.y,
+      };
+    }
+  };
+
+  const handlePanMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPan({
+        x: panStartRef.current.panX + dx,
+        y: panStartRef.current.panY + dy,
+      });
+    }
+  };
+
+  const handlePanEnd = () => {
+    setIsPanning(false);
+  };
+
+  const resetView = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleNodeMouseDown = (
+    nodeId: string,
+    e: React.MouseEvent<SVGElement>,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const pos = positions.get(nodeId);
+    if (!pos) return;
+
+    const svgPoint = getSVGPoint(e);
+    dragOffsetRef.current = {
+      x: pos.x - svgPoint.x,
+      y: pos.y - svgPoint.y,
+    };
+
+    setDraggedNode(nodeId);
+
+    const simNode = simNodesRef.current.find((n) => n.id === nodeId);
+    if (simNode && simulationRef.current) {
+      simNode.fx = pos.x;
+      simNode.fy = pos.y;
+      simulationRef.current.alphaTarget(0.3).restart();
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!draggedNode) return;
+
+    const svgPoint = getSVGPoint(e);
+    const newX = Math.max(
+      80,
+      Math.min(VIEW_WIDTH - 80, svgPoint.x + dragOffsetRef.current.x),
+    );
+    const newY = Math.max(
+      80,
+      Math.min(VIEW_HEIGHT - 80, svgPoint.y + dragOffsetRef.current.y),
+    );
+
+    const simNode = simNodesRef.current.find((n) => n.id === draggedNode);
+    if (simNode) {
+      simNode.fx = newX;
+      simNode.fy = newY;
+      simNode.x = newX;
+      simNode.y = newY;
+    }
+
+    setPositions((prev) => {
+      const newPositions = new Map(prev);
+      newPositions.set(draggedNode, { x: newX, y: newY });
+      return newPositions;
+    });
+  };
+
+  const handleMouseUp = () => {
+    if (draggedNode) {
+      const simNode = simNodesRef.current.find((n) => n.id === draggedNode);
+      if (simNode && simulationRef.current) {
+        simNode.fx = null;
+        simNode.fy = null;
+        simulationRef.current.alphaTarget(0);
+      }
+    }
+    setDraggedNode(null);
+  };
+
+  const handleNodeClick = (nodeId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedNode((prev) => (prev === nodeId ? null : nodeId));
+  };
+
+  const handleBackgroundClick = () => {
+    setSelectedNode(null);
+  };
 
   const getNodeColor = (type: string) =>
     NODE_TYPE_COLORS[type] || NODE_TYPE_COLORS.default;
 
-  const connectedNodes = hoveredNode
+  // Determine which nodes should be highlighted (via hover or selection)
+  const activeNode = draggedNode || hoveredNode || selectedNode;
+  const connectedNodes = activeNode
     ? new Set(
         edges
-          .filter((e) => e.source === hoveredNode || e.target === hoveredNode)
+          .filter((e) => e.source === activeNode || e.target === activeNode)
           .flatMap((e) => [e.source, e.target]),
       )
     : null;
 
   return (
-    <div style={memoryStyles.graphContainer}>
+    <div ref={containerRef} style={memoryStyles.graphContainer}>
+      <div style={memoryStyles.graphControls}>
+        <button
+          onClick={() => setZoom((z) => Math.min(2.5, z * 1.2))}
+          style={memoryStyles.zoomBtn}
+          title="Zoom In"
+        >
+          +
+        </button>
+        <button
+          onClick={() => setZoom((z) => Math.max(0.5, z / 1.2))}
+          style={memoryStyles.zoomBtn}
+          title="Zoom Out"
+        >
+          −
+        </button>
+        <button
+          onClick={resetView}
+          style={memoryStyles.zoomBtn}
+          title="Reset View"
+        >
+          ⟲
+        </button>
+        <span style={memoryStyles.zoomLabel}>{Math.round(zoom * 100)}%</span>
+      </div>
       <svg
+        ref={svgRef}
         width="100%"
-        height="360"
-        viewBox="0 0 600 360"
-        style={{ display: "block" }}
+        height="100%"
+        viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{
+          display: "block",
+          cursor: isPanning ? "grabbing" : draggedNode ? "grabbing" : "grab",
+          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+          transformOrigin: "center center",
+          transition:
+            isPanning || draggedNode ? "none" : "transform 0.1s ease-out",
+        }}
+        onMouseMove={(e) => {
+          handleMouseMove(e);
+          handlePanMove(e);
+        }}
+        onMouseUp={() => {
+          handleMouseUp();
+          handlePanEnd();
+        }}
+        onMouseLeave={() => {
+          handleMouseUp();
+          handlePanEnd();
+        }}
+        onMouseDown={handlePanStart}
+        onClick={handleBackgroundClick}
+        onWheel={handleWheel}
       >
         <defs>
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+          <linearGradient id="etherealGrad">
+            <stop offset="0%" stopColor="#00ffff" />
+            <stop offset="100%" stopColor="#ff00ff" />
+          </linearGradient>
+          <linearGradient id="etherealGradAlt">
+            <stop offset="0%" stopColor="#ff00ff" />
+            <stop offset="100%" stopColor="#00ffff" />
+          </linearGradient>
+          <filter id="nodeBlur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="1" />
+          </filter>
+          <filter id="nodeGlow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
             <feMerge>
-              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor={COLORS.border} stopOpacity="0.3" />
-            <stop offset="50%" stopColor={COLORS.muted} stopOpacity="0.6" />
-            <stop offset="100%" stopColor={COLORS.border} stopOpacity="0.3" />
-          </linearGradient>
+          <filter
+            id="strongGlow"
+            x="-100%"
+            y="-100%"
+            width="300%"
+            height="300%"
+          >
+            <feGaussianBlur stdDeviation="10" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <radialGradient id="bgGlow1" cx="30%" cy="30%" r="50%">
+            <stop offset="0%" stopColor="#0f172a" />
+            <stop offset="100%" stopColor="#000" />
+          </radialGradient>
+          <radialGradient id="bgGlow2" cx="70%" cy="70%" r="40%">
+            <stop offset="0%" stopColor="rgba(100, 200, 255, 0.03)" />
+            <stop offset="100%" stopColor="transparent" />
+          </radialGradient>
+          <radialGradient id="bgGlow3" cx="20%" cy="80%" r="35%">
+            <stop offset="0%" stopColor="rgba(255, 100, 255, 0.02)" />
+            <stop offset="100%" stopColor="transparent" />
+          </radialGradient>
         </defs>
 
+        <rect width="100%" height="100%" fill="url(#bgGlow1)" />
+        <rect width="100%" height="100%" fill="url(#bgGlow2)" />
+        <rect width="100%" height="100%" fill="url(#bgGlow3)" />
+
         {edges.map((edge) => {
-          const sourcePos = nodePositions.current.get(edge.source);
-          const targetPos = nodePositions.current.get(edge.target);
+          const sourcePos = positions.get(edge.source);
+          const targetPos = positions.get(edge.target);
           if (!sourcePos || !targetPos) return null;
 
           const isHighlighted =
             hoveredEdge === edge.id ||
-            hoveredNode === edge.source ||
-            hoveredNode === edge.target;
+            activeNode === edge.source ||
+            activeNode === edge.target;
+
+          const isDraggingConnected =
+            draggedNode &&
+            (edge.source === draggedNode || edge.target === draggedNode);
 
           const midX = (sourcePos.x + targetPos.x) / 2;
           const midY = (sourcePos.y + targetPos.y) / 2;
-          const curveOffset = 20;
-          const dx = targetPos.x - sourcePos.x;
-          const dy = targetPos.y - sourcePos.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const nx = -dy / len;
-          const ny = dx / len;
-          const ctrlX = midX + nx * curveOffset;
-          const ctrlY = midY + ny * curveOffset;
+          const curveOffset = 20 + Math.random() * 10;
+          const ctrlX = midX + curveOffset;
+          const ctrlY = midY - curveOffset;
 
           return (
             <g key={edge.id}>
               <path
                 d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
                 fill="none"
-                stroke={isHighlighted ? COLORS.accent : "url(#edgeGradient)"}
-                strokeWidth={isHighlighted ? 2 : 1}
-                strokeOpacity={isHighlighted ? 1 : 0.5}
-                style={{
-                  transition: "all 0.2s ease",
-                  cursor: "pointer",
-                }}
+                stroke="transparent"
+                strokeWidth={20}
+                style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredEdge(edge.id)}
                 onMouseLeave={() => setHoveredEdge(null)}
               />
-              {isHighlighted && (
-                <text
-                  x={ctrlX}
-                  y={ctrlY - 8}
-                  textAnchor="middle"
-                  fill={COLORS.text}
-                  fontSize="10"
-                  fontFamily="Inter, sans-serif"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {edge.fact.length > 40
-                    ? edge.fact.slice(0, 40) + "..."
-                    : edge.fact}
-                </text>
+              <path
+                d={`M ${sourcePos.x} ${sourcePos.y} Q ${ctrlX} ${ctrlY} ${targetPos.x} ${targetPos.y}`}
+                fill="none"
+                stroke={isHighlighted ? "#fff" : "url(#etherealGrad)"}
+                strokeWidth={isHighlighted ? 2 : 1}
+                strokeOpacity={isHighlighted ? 0.6 : 0.2}
+                strokeLinecap="round"
+                filter={isHighlighted ? "url(#nodeGlow)" : undefined}
+                style={{
+                  transition: "all 0.3s ease",
+                  pointerEvents: "none",
+                }}
+              />
+              {isHighlighted && !isDraggingConnected && (
+                <g style={{ pointerEvents: "none" }}>
+                  <rect
+                    x={ctrlX - 120}
+                    y={ctrlY - 28}
+                    width={240}
+                    height={36}
+                    rx={4}
+                    fill="rgba(0, 0, 0, 0.85)"
+                    stroke="rgba(100, 200, 255, 0.3)"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={ctrlX}
+                    y={ctrlY - 6}
+                    textAnchor="middle"
+                    fill="rgba(255, 255, 255, 0.8)"
+                    fontSize="12"
+                    fontFamily="Georgia, serif"
+                    fontStyle="italic"
+                  >
+                    {edge.fact.length > 45
+                      ? edge.fact.slice(0, 45) + "..."
+                      : edge.fact}
+                  </text>
+                </g>
               )}
             </g>
           );
         })}
 
-        {nodes.map((node) => {
-          const pos = nodePositions.current.get(node.id);
+        {nodes.map((node, index) => {
+          const pos = positions.get(node.id);
           if (!pos) return null;
 
           const isHovered = hoveredNode === node.id;
+          const isSelected = selectedNode === node.id;
+          const isDragging = draggedNode === node.id;
           const isConnected = connectedNodes?.has(node.id);
-          const isDimmed = hoveredNode && !isConnected && !isHovered;
-          const nodeColor = getNodeColor(node.type);
+          const isDimmed =
+            activeNode &&
+            !isConnected &&
+            !isHovered &&
+            !isSelected &&
+            !isDragging;
+
+          const baseRadius = 8 + (index % 5) * 4;
+          const radius =
+            isHovered || isSelected || isDragging
+              ? baseRadius * 1.3
+              : baseRadius;
 
           return (
             <g
               key={node.id}
               style={{
-                cursor: "pointer",
-                transition: "opacity 0.2s ease",
+                cursor: isDragging ? "grabbing" : "grab",
                 opacity: isDimmed ? 0.3 : 1,
+                transition: isDragging ? "none" : "opacity 0.3s ease",
               }}
-              onMouseEnter={() => setHoveredNode(node.id)}
-              onMouseLeave={() => setHoveredNode(null)}
+              onMouseEnter={() => !draggedNode && setHoveredNode(node.id)}
+              onMouseLeave={() => !draggedNode && setHoveredNode(null)}
+              onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
+              onClick={(e) => handleNodeClick(node.id, e)}
             >
               <circle
                 cx={pos.x}
                 cy={pos.y}
-                r={isHovered ? 28 : 22}
-                fill={nodeColor}
-                fillOpacity={isHovered ? 0.25 : 0.15}
-                stroke={nodeColor}
-                strokeWidth={isHovered ? 2 : 1.5}
-                filter={isHovered ? "url(#glow)" : undefined}
-                style={{ transition: "all 0.2s ease" }}
-              />
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={isHovered ? 10 : 8}
-                fill={nodeColor}
-                style={{ transition: "all 0.2s ease" }}
+                r={radius}
+                fill="rgba(255, 255, 255, 0.05)"
+                stroke={
+                  isHovered || isSelected ? "#fff" : "rgba(100, 200, 255, 0.4)"
+                }
+                strokeWidth={isHovered || isSelected ? 2 : 1}
+                filter={
+                  isHovered || isSelected
+                    ? "url(#strongGlow)"
+                    : "url(#nodeBlur)"
+                }
+                style={{
+                  transition: isDragging ? "none" : "all 0.2s ease",
+                }}
               />
               <text
                 x={pos.x}
-                y={pos.y + (isHovered ? 44 : 38)}
+                y={pos.y + radius + 18}
                 textAnchor="middle"
-                fill={COLORS.text}
-                fontSize={isHovered ? "12" : "11"}
-                fontFamily="Inter, sans-serif"
-                fontWeight={isHovered ? 600 : 400}
-                style={{ transition: "all 0.2s ease" }}
+                fill={
+                  isHovered || isSelected
+                    ? "rgba(255, 255, 255, 0.9)"
+                    : "rgba(255, 255, 255, 0.6)"
+                }
+                fontSize="14"
+                fontFamily="Georgia, 'Times New Roman', serif"
+                fontStyle="italic"
+                style={{
+                  transition: "all 0.2s ease",
+                  pointerEvents: "none",
+                  userSelect: "none",
+                }}
               >
-                {node.label.length > 15
-                  ? node.label.slice(0, 15) + "..."
+                {node.label.length > 20
+                  ? node.label.slice(0, 20) + "..."
                   : node.label}
               </text>
-              {isHovered && (
+              {(isHovered || isSelected) && (
                 <text
                   x={pos.x}
-                  y={pos.y + 56}
+                  y={pos.y + radius + 34}
                   textAnchor="middle"
-                  fill={COLORS.muted}
-                  fontSize="9"
-                  fontFamily="Inter, sans-serif"
+                  fill="rgba(100, 200, 255, 0.7)"
+                  fontSize="11"
+                  fontFamily="Georgia, serif"
+                  fontStyle="italic"
+                  style={{ pointerEvents: "none" }}
                 >
                   {node.type}
                 </text>
@@ -1280,17 +2181,39 @@ function KnowledgeGraph({
             </g>
           );
         })}
+
+        {nodes.length === 0 && (
+          <text
+            x={VIEW_WIDTH / 2}
+            y={VIEW_HEIGHT / 2}
+            textAnchor="middle"
+            fill="rgba(255, 255, 255, 0.4)"
+            fontSize="18"
+            fontFamily="Georgia, serif"
+            fontStyle="italic"
+          >
+            awaiting knowledge...
+          </text>
+        )}
       </svg>
 
       <div style={memoryStyles.legendContainer}>
-        {Object.entries(NODE_TYPE_COLORS)
-          .filter(([key]) => key !== "default")
-          .map(([type, color]) => (
-            <div key={type} style={memoryStyles.legendItem}>
-              <div style={{ ...memoryStyles.legendDot, background: color }} />
-              <span>{type}</span>
-            </div>
-          ))}
+        <div style={memoryStyles.legendItem}>
+          <div
+            style={{
+              ...memoryStyles.legendDot,
+              background: "linear-gradient(135deg, #00ffff, #ff00ff)",
+            }}
+          />
+          <span>connections</span>
+        </div>
+        <div style={memoryStyles.legendItem}>
+          <span
+            style={{ color: "rgba(255, 255, 255, 0.5)", fontStyle: "italic" }}
+          >
+            drag to explore • scroll to zoom
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -1299,24 +2222,73 @@ function KnowledgeGraph({
 const memoryStyles: Record<string, CSSProperties> = {
   graphContainer: {
     position: "relative",
-    padding: "1rem",
-    background: `linear-gradient(135deg, ${COLORS.bg} 0%, ${COLORS.surface} 100%)`,
-    minHeight: "400px",
+    width: "100%",
+    height: "100%",
+    borderRadius: "12px",
+    overflow: "hidden",
+    background: "radial-gradient(circle at center, #050a15 0%, #000 100%)",
+    boxShadow:
+      "0 0 60px rgba(100, 200, 255, 0.1), inset 0 0 120px rgba(0, 0, 0, 0.5)",
+  },
+  graphControls: {
+    position: "absolute",
+    top: "1rem",
+    right: "1rem",
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    zIndex: 20,
+    background: "rgba(0, 0, 0, 0.6)",
+    backdropFilter: "blur(12px)",
+    padding: "0.4rem",
+    borderRadius: "8px",
+    border: "1px solid rgba(100, 200, 255, 0.2)",
+  },
+  zoomBtn: {
+    width: "28px",
+    height: "28px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid rgba(100, 200, 255, 0.3)",
+    background: "rgba(255, 255, 255, 0.05)",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "1rem",
+    fontWeight: 500,
+    color: "rgba(255, 255, 255, 0.7)",
+    transition: "all 0.15s ease",
+  },
+  zoomLabel: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "0.7rem",
+    color: "rgba(255, 255, 255, 0.5)",
+    minWidth: "40px",
+    textAlign: "center",
   },
   legendContainer: {
+    position: "absolute",
+    bottom: "1rem",
+    left: "50%",
+    transform: "translateX(-50%)",
     display: "flex",
-    gap: "1.25rem",
+    gap: "1.5rem",
     justifyContent: "center",
-    padding: "0.75rem",
-    borderTop: `1px solid ${COLORS.border}`,
-    background: COLORS.surface,
+    alignItems: "center",
+    padding: "0.6rem 1.25rem",
+    background: "rgba(0, 0, 0, 0.5)",
+    backdropFilter: "blur(12px)",
+    borderRadius: "20px",
+    border: "1px solid rgba(100, 200, 255, 0.15)",
+    zIndex: 20,
   },
   legendItem: {
     display: "flex",
     alignItems: "center",
     gap: "0.5rem",
     fontSize: "0.75rem",
-    color: COLORS.muted,
+    color: "rgba(255, 255, 255, 0.5)",
+    fontFamily: "Georgia, serif",
   },
   legendDot: {
     width: "10px",
@@ -2060,7 +3032,57 @@ const styles: Record<string, CSSProperties> = {
     letterSpacing: "0.05em",
   },
 
-  // Activity Feed
+  greetingBox: {
+    background: `linear-gradient(135deg, ${COLORS.surface} 0%, rgba(99, 102, 241, 0.1) 100%)`,
+    border: `1px solid ${COLORS.accent}`,
+    borderRadius: "8px",
+    padding: "1.25rem 1.5rem",
+    marginBottom: "1.5rem",
+    display: "flex",
+    alignItems: "center",
+    gap: "1rem",
+  },
+  greetingIcon: {
+    fontSize: "1.5rem",
+    flexShrink: 0,
+  },
+  greetingContent: {
+    flex: 1,
+  },
+  greetingText: {
+    fontSize: "1rem",
+    color: COLORS.text,
+    lineHeight: 1.5,
+  },
+  greetingLoading: {
+    fontSize: "0.9rem",
+    color: COLORS.muted,
+    fontStyle: "italic",
+  },
+  activityFeedList: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+  },
+  emptyActivity: {
+    padding: "2rem 1.5rem",
+    textAlign: "center" as const,
+    color: COLORS.muted,
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: "0.5rem",
+  },
+  emptyActivityIcon: {
+    fontSize: "1.5rem",
+  },
+  priorityLabels: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: "0.5rem",
+    fontSize: "0.7rem",
+    fontFamily: "'JetBrains Mono', monospace",
+  },
   activityFeed: {
     listStyle: "none",
   },

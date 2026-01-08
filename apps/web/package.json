@@ -16,6 +16,7 @@
     "@upstash/ratelimit": "^1.0.0",
     "@upstash/redis": "^1.28.0",
     "@vibe-planning/shared": "*",
+    "d3-force": "^3.0.0",
     "gray-matter": "^4.0.3",
     "next": "^14.1.0",
     "openai": "^6.15.0",
@@ -23,6 +24,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/d3-force": "^3.0.10",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

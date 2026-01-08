@@ -1,13 +1,17 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Vibe Planning - AI Task Management via Email & SMS',
+  title: "Agent Organizer - AI-Powered Knowledge & Task Management",
   description:
-    'Your AI assistant that lives in your inbox, responds to your texts, and organizes your tasks - all powered by a transparent file system you own.',
+    "Your intelligent AI assistant that organizes knowledge, manages tasks, and provides insights through a beautiful knowledge graph interface.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>{children}</body>
