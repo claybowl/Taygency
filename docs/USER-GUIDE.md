@@ -25,6 +25,53 @@ Welcome to Vibe Planning - your AI assistant that lives in your inbox and respon
 
 The development server uses Next.js and runs on port 3000 by default. The server supports hot reloading, so changes you make to the code will automatically refresh in your browser.
 
+### Starting Docker Services (Graphiti Knowledge Graph)
+
+For full AI agent memory capabilities, start the Graphiti knowledge graph service:
+
+1. **Set up environment variables** (first time only):
+
+   ```bash
+   cd graphiti
+   cp .env.example .env
+   ```
+
+   Edit `graphiti/.env` and add your OpenAI API key:
+
+   ```
+   OPENAI_API_KEY=sk-your-actual-api-key-here
+   NEO4J_PASSWORD=password
+   ```
+
+2. **Start the Docker containers**:
+
+   ```bash
+   cd graphiti
+   docker compose up -d
+   ```
+
+3. **Verify services are running**:
+
+   ```bash
+   docker ps
+   # Should show both neo4j and graph containers as "Up"
+
+   # Test the API endpoint
+   curl http://localhost:8000/healthcheck
+   ```
+
+4. **Access the services**:
+   - Graphiti API: **http://localhost:8000**
+   - Neo4j Browser: **http://localhost:7474** (username: `neo4j`, password: `password`)
+
+**Troubleshooting**: If the `graphiti-graph` container fails, check the logs:
+
+```bash
+docker logs graphiti-graph-1
+```
+
+Common issue: Missing `OPENAI_API_KEY` in `graphiti/.env`. See the [Troubleshooting Docker Issues](#troubleshooting-docker-issues) section below for more details.
+
 ### Accessing the Dashboard
 
 The Dashboard provides a visual interface for managing tasks and monitoring the AI agent:
@@ -604,19 +651,76 @@ Graphiti provides long-term memory and context awareness for the AI agent. When 
 **Quick Start with Docker:**
 
 ```bash
-# Clone Graphiti
-git clone https://github.com/getzep/graphiti.git
+# Navigate to the graphiti directory (already included in this repo)
 cd graphiti
 
+# Create/edit .env file with required settings
+# Copy from .env.example and add your OpenAI API key:
+cp .env.example .env
+
+# Edit .env and set:
+# OPENAI_API_KEY=sk-your-actual-api-key-here
+# NEO4J_PASSWORD=password
+
 # Start with Docker Compose (includes Neo4j)
-docker-compose up -d
+docker compose up -d
 
 # The server will be available at http://localhost:8000
 ```
 
+**Troubleshooting Docker Issues:**
+
+If the `graphiti-graph` container fails to start:
+
+1. **Check container status:**
+
+   ```bash
+   docker ps -a
+   ```
+
+2. **View error logs:**
+
+   ```bash
+   docker logs graphiti-graph-1
+   ```
+
+3. **Common issue - Missing OPENAI_API_KEY:**
+   If you see `ValidationError: openai_api_key Field required`, edit `graphiti/.env` and add your OpenAI API key:
+
+   ```
+   OPENAI_API_KEY=sk-your-actual-api-key-here
+   ```
+
+4. **Restart containers after fixing:**
+
+   ```bash
+   cd graphiti
+   docker compose down
+   docker compose up -d
+   ```
+
+5. **Verify services are healthy:**
+
+   ```bash
+   docker ps
+   # Both neo4j and graph containers should show "Up" status
+
+   # Test the healthcheck endpoint
+   curl http://localhost:8000/healthcheck
+   ```
+
+**Required Environment Variables for Docker:**
+
+| Variable         | Required | Default    | Description                           |
+| ---------------- | -------- | ---------- | ------------------------------------- |
+| `OPENAI_API_KEY` | **Yes**  | -          | Your OpenAI API key for LLM inference |
+| `NEO4J_PASSWORD` | No       | `password` | Neo4j database password               |
+| `NEO4J_USER`     | No       | `neo4j`    | Neo4j username                        |
+| `NEO4J_PORT`     | No       | `7687`     | Neo4j Bolt protocol port              |
+
 **Environment Setup:**
 
-Add to your `.env.local`:
+Add to your `apps/web/.env.local`:
 
 ```bash
 GRAPHITI_URL=http://localhost:8000
