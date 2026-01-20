@@ -59,6 +59,7 @@ export default function DashboardPage() {
   const [currentPage, setCurrentPage] = useState<PageId>("overview");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("active");
   const [barsAnimated, setBarsAnimated] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [simulatorResponse, setSimulatorResponse] =
     useState<AgentResponse | null>(null);
   const [simulatorTrace, setSimulatorTrace] =
@@ -453,6 +454,7 @@ export default function DashboardPage() {
 
   const showPage = (pageId: PageId) => {
     setCurrentPage(pageId);
+    setIsMobileMenuOpen(false);
   };
 
   const simulateSend = async () => {
@@ -643,13 +645,54 @@ export default function DashboardPage() {
 
   return (
     <div style={styles.body}>
+      {/* Mobile Menu Button */}
+      <button
+        data-mobile-menu-button
+        style={styles.mobileMenuButton}
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        aria-label="Toggle menu"
+      >
+        <span style={styles.hamburgerLine} />
+        <span style={styles.hamburgerLine} />
+        <span style={styles.hamburgerLine} />
+      </button>
+
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          data-mobile-overlay
+          style={styles.mobileOverlay}
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Structural Grid Lines */}
-      <div style={{ ...styles.gridLine, ...styles.gridV, left: "260px" }} />
-      <div style={{ ...styles.gridLine, ...styles.gridV, left: "60%" }} />
-      <div style={{ ...styles.gridLine, ...styles.gridH, top: "100px" }} />
+      <div
+        data-grid-line
+        style={{ ...styles.gridLine, ...styles.gridV, left: "260px" }}
+      />
+      <div
+        data-grid-line
+        style={{ ...styles.gridLine, ...styles.gridV, left: "60%" }}
+      />
+      <div
+        data-grid-line
+        style={{ ...styles.gridLine, ...styles.gridH, top: "100px" }}
+      />
 
       {/* Sidebar Navigation */}
-      <aside style={styles.aside}>
+      <aside
+        data-sidebar
+        {...(isMobileMenuOpen
+          ? { "data-sidebar-open": true }
+          : { "data-sidebar-closed": true })}
+        style={{
+          ...styles.aside,
+          ...(isMobileMenuOpen
+            ? styles.asideMobileOpen
+            : styles.asideMobileClosed),
+        }}
+      >
         <div style={styles.logo}>
           <div style={styles.logoMark} />
           <span>Agent Organizer</span>
@@ -717,12 +760,14 @@ export default function DashboardPage() {
       </aside>
 
       {/* Main Content Area */}
-      <main style={styles.main}>
+      <main data-main-content style={styles.main}>
         {/* Overview Page */}
         {currentPage === "overview" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>System Overview</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                System Overview
+              </h1>
               <p style={styles.pageSubtitle}>
                 Real-time monitoring and agent health diagnostics.
               </p>
@@ -742,7 +787,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div style={styles.statsGrid}>
+            <div data-stats-grid style={styles.statsGrid}>
               <StatCard
                 label="Active Tasks"
                 value={activeTasks.toString()}
@@ -765,7 +810,7 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div style={styles.dashboardContent}>
+            <div data-dashboard-content style={styles.dashboardContent}>
               {/* Activity Feed */}
               <div style={styles.sectionBox}>
                 <div style={styles.sectionHeader}>
@@ -876,8 +921,10 @@ export default function DashboardPage() {
         {/* Tasks Page */}
         {currentPage === "tasks" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Task Management</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                Task Management
+              </h1>
               <p style={styles.pageSubtitle}>
                 Structural overview of all planned agent operations.
               </p>
@@ -921,8 +968,10 @@ export default function DashboardPage() {
         {/* Skills Page */}
         {currentPage === "skills" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Skills Library</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                Skills Library
+              </h1>
               <p style={styles.pageSubtitle}>
                 Agent capabilities organized by function.
               </p>
@@ -1017,8 +1066,10 @@ export default function DashboardPage() {
         {/* Files Page */}
         {currentPage === "files" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>File Browser</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                File Browser
+              </h1>
               <p style={styles.pageSubtitle}>
                 Browse workspace files from the GitHub repository.
               </p>
@@ -1030,8 +1081,8 @@ export default function DashboardPage() {
                 <p style={styles.loadingText}>Loading files from GitHub...</p>
               </div>
             ) : (
-              <div style={styles.fileBrowser}>
-                <div style={styles.fileTree}>
+              <div data-file-browser style={styles.fileBrowser}>
+                <div data-file-tree style={styles.fileTree}>
                   {fileTree.length === 0 ? (
                     <div style={filesStyles.emptyTree}>No files found</div>
                   ) : (
@@ -1076,8 +1127,10 @@ export default function DashboardPage() {
         {/* Logs Page */}
         {currentPage === "logs" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Execution Logs</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                Execution Logs
+              </h1>
               <p style={styles.pageSubtitle}>
                 Agent execution traces and debugging information.
               </p>
@@ -1202,8 +1255,10 @@ export default function DashboardPage() {
         {/* Context Page */}
         {currentPage === "context" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Context Memory</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                Context Memory
+              </h1>
               <p style={styles.pageSubtitle}>
                 Learned patterns, preferences, and schedule information.
               </p>
@@ -1225,7 +1280,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div style={contextStyles.grid}>
+                <div data-context-grid style={contextStyles.grid}>
                   {/* Preferences Card */}
                   {contextData.preferences && (
                     <div style={contextStyles.card}>
@@ -1525,8 +1580,10 @@ export default function DashboardPage() {
         {/* Testing Page */}
         {currentPage === "testing" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Live Testing</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                Live Testing
+              </h1>
               <p style={styles.pageSubtitle}>
                 Test Voice and SMS integrations directly with real endpoints.
               </p>
@@ -1677,8 +1734,10 @@ export default function DashboardPage() {
         {/* Simulator Page */}
         {currentPage === "simulator" && (
           <section style={styles.pageTransition}>
-            <div style={styles.pageHeader}>
-              <h1 style={styles.pageTitle}>Agent Simulator</h1>
+            <div data-page-header style={styles.pageHeader}>
+              <h1 data-page-title style={styles.pageTitle}>
+                Agent Simulator
+              </h1>
               <p style={styles.pageSubtitle}>
                 Send mock triggers to test system response logic.
               </p>
@@ -5034,6 +5093,41 @@ const styles: Record<string, CSSProperties> = {
     left: 0,
   },
 
+  // Mobile Menu Button
+  mobileMenuButton: {
+    display: "none",
+    position: "fixed" as const,
+    top: "1rem",
+    left: "1rem",
+    zIndex: 1001,
+    width: "44px",
+    height: "44px",
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: "8px",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "5px",
+    cursor: "pointer",
+    padding: "0",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+  },
+  hamburgerLine: {
+    width: "20px",
+    height: "2px",
+    background: COLORS.text,
+    borderRadius: "2px",
+    transition: "all 0.3s ease",
+  },
+  mobileOverlay: {
+    display: "none",
+    position: "fixed" as const,
+    inset: 0,
+    background: "rgba(0, 0, 0, 0.5)",
+    zIndex: 999,
+  },
+
   // Sidebar
   aside: {
     width: "260px",
@@ -5043,8 +5137,15 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column" as const,
     padding: "2rem 0",
-    zIndex: 10,
+    zIndex: 1000,
     position: "relative" as const,
+    transition: "transform 0.3s ease",
+  },
+  asideMobileClosed: {
+    transform: "translateX(0)",
+  },
+  asideMobileOpen: {
+    transform: "translateX(0)",
   },
   logo: {
     padding: "0 2rem 3rem 2rem",
