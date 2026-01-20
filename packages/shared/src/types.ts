@@ -150,11 +150,24 @@ export interface VAPIWebhookPayload {
   message: VAPIMessage;
 }
 
+export type VAPIMessageType =
+  | "conversation-update"
+  | "tool-calls"
+  | "status-update"
+  | "assistant-request"
+  | "end-of-call-report"
+  | "speech-update"
+  | "hang";
+
 export interface VAPIMessage {
-  type: "conversation-update" | "end-of-call-report" | "hang" | "speech-update";
+  type: VAPIMessageType;
   role?: "user" | "assistant";
   content?: string;
   call?: VAPICall;
+  transcript?: string;
+  status?: string;
+  toolCallList?: VAPIToolCall[];
+  messages?: VAPIConversationMessage[];
 }
 
 export interface VAPICall {
@@ -165,7 +178,37 @@ export interface VAPICall {
   };
   customer: {
     number: string;
+    firstName?: string;
+    lastName?: string;
   };
+  status?: string;
+  duration?: number;
+  cost?: number;
+}
+
+export interface VAPIToolCall {
+  id: string;
+  name: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface VAPIConversationMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface VAPIToolResult {
+  toolCallId: string;
+  name: string;
+  result: string;
+}
+
+export interface VAPIWebhookResponse {
+  results?: VAPIToolResult[];
+  message?: string;
+  success?: boolean;
+  received?: boolean;
+  assistantId?: string;
 }
 
 export interface SearchResult {

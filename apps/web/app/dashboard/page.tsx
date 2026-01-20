@@ -31,6 +31,7 @@ type PageId =
   | "logs"
   | "context"
   | "memory"
+  | "testing"
   | "simulator";
 
 interface MemoryResponse {
@@ -117,6 +118,77 @@ export default function DashboardPage() {
   const [simFrom, setSimFrom] = useState("");
   const [simSubject, setSimSubject] = useState("");
   const [simBody, setSimBody] = useState("");
+
+  // Form state for testing
+  const [testPhone, setTestPhone] = useState("");
+  const [testMessage, setTestMessage] = useState("");
+  const [testMode, setTestMode] = useState<"sms" | "voice">("sms");
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+    details?: any;
+  } | null>(null);
+
+  const handleTestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTestLoading(true);
+    setTestResult(null);
+
+    // Basic E.164 formatting
+    let formattedPhone = testPhone.replace(/\D/g, "");
+    if (formattedPhone.length === 10) {
+      formattedPhone = "+1" + formattedPhone;
+    } else if (!formattedPhone.startsWith("+")) {
+      formattedPhone = "+" + formattedPhone;
+    }
+
+    try {
+      const endpoint =
+        testMode === "sms" ? "/api/testing/sms" : "/api/testing/voice";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: formattedPhone,
+          message: testMessage,
+        }),
+      });
+
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        console.error("Non-JSON response:", text);
+        throw new Error(
+          `Server returned non-JSON response (${res.status}). Check console for details.`,
+        );
+      }
+
+      if (res.ok) {
+        setTestResult({
+          success: true,
+          message: data.message || "Operation successful",
+          details: data,
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: data.error || "Operation failed",
+          details: data,
+        });
+      }
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Network error",
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  };
 
   // Mock data for when API fails (no GitHub token, etc.)
   const mockTasks: Task[] = [
@@ -593,6 +665,7 @@ export default function DashboardPage() {
                 "logs",
                 "context",
                 "memory",
+                "testing",
               ] as PageId[]
             ).map((page) => (
               <li key={page} style={styles.navItem}>
@@ -1447,6 +1520,158 @@ export default function DashboardPage() {
         {/* Memory Page */}
         {currentPage === "memory" && (
           <MemoryPage memoryLoading={memoryLoading} memoryData={memoryData} />
+        )}
+
+        {/* Testing Page */}
+        {currentPage === "testing" && (
+          <section style={styles.pageTransition}>
+            <div style={styles.pageHeader}>
+              <h1 style={styles.pageTitle}>Live Testing</h1>
+              <p style={styles.pageSubtitle}>
+                Test Voice and SMS integrations directly with real endpoints.
+              </p>
+            </div>
+
+            <div style={styles.simulatorContainer}>
+              <div style={styles.simulatorLayout}>
+                <div style={styles.composer}>
+                  <div style={styles.inputGroup}>
+                    <label style={styles.inputLabel}>Test Mode</label>
+                    <div style={{ display: "flex", gap: "1rem" }}>
+                      <button
+                        style={{
+                          ...styles.btn,
+                          ...(testMode === "sms"
+                            ? styles.btnActive
+                            : styles.btnOutline),
+                          flex: 1,
+                        }}
+                        onClick={() => setTestMode("sms")}
+                      >
+                        💬 SMS
+                      </button>
+                      <button
+                        style={{
+                          ...styles.btn,
+                          ...(testMode === "voice"
+                            ? styles.btnActive
+                            : styles.btnOutline),
+                          flex: 1,
+                        }}
+                        onClick={() => setTestMode("voice")}
+                      >
+                        📞 Voice
+                      </button>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleTestSubmit}>
+                    <div style={styles.inputGroup}>
+                      <label style={styles.inputLabel}>
+                        Phone Number (E.164)
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="+1234567890"
+                        value={testPhone}
+                        onChange={(e) => setTestPhone(e.target.value)}
+                        style={styles.input}
+                        required
+                      />
+                    </div>
+
+                    <div style={styles.inputGroup}>
+                      <label style={styles.inputLabel}>
+                        {testMode === "sms"
+                          ? "Message"
+                          : "Opening Prompt (Optional)"}
+                      </label>
+                      <textarea
+                        rows={4}
+                        placeholder={
+                          testMode === "sms"
+                            ? "Hello, this is a test message."
+                            : "Hello, how can I help you today?"
+                        }
+                        value={testMessage}
+                        onChange={(e) => setTestMessage(e.target.value)}
+                        style={styles.textarea}
+                        required={testMode === "sms"}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={testLoading}
+                      style={{
+                        ...styles.btnPrimary,
+                        opacity: testLoading ? 0.7 : 1,
+                      }}
+                    >
+                      {testLoading
+                        ? "Sending..."
+                        : testMode === "sms"
+                          ? "Send SMS"
+                          : "Start Call"}
+                    </button>
+                  </form>
+                </div>
+
+                <div style={styles.responsePanel}>
+                  <div style={styles.responseView}>
+                    {!testResult ? (
+                      <div style={styles.waitingText}>
+                        // Waiting for test execution...
+                      </div>
+                    ) : (
+                      <div style={{ padding: "1rem" }}>
+                        <div
+                          style={{
+                            marginBottom: "1rem",
+                            padding: "0.75rem",
+                            borderRadius: "6px",
+                            background: testResult.success
+                              ? "rgba(34, 197, 94, 0.1)"
+                              : "rgba(220, 38, 38, 0.1)",
+                            border: `1px solid ${
+                              testResult.success
+                                ? COLORS.success
+                                : COLORS.danger
+                            }`,
+                            color: testResult.success
+                              ? COLORS.success
+                              : COLORS.danger,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {testResult.success ? "✓ SUCCESS" : "✗ FAILED"}
+                          <div
+                            style={{ fontWeight: 400, marginTop: "0.25rem" }}
+                          >
+                            {testResult.message}
+                          </div>
+                        </div>
+                        {testResult.details && (
+                          <pre
+                            style={{
+                              background: "rgba(0,0,0,0.05)",
+                              padding: "1rem",
+                              borderRadius: "6px",
+                              overflow: "auto",
+                              fontSize: "0.85rem",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {JSON.stringify(testResult.details, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
         )}
 
         {/* Simulator Page */}
